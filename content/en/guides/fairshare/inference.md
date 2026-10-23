@@ -287,9 +287,54 @@ are preempted first. Without competition an institution takes everything; under
 saturation each gets its share back.
 
 This is the policy the [gateway]({{< relref "gateway.md" >}}#fair-share-with-borrowing)
-implements in its `fairshare` package, with the two refinements the simulator
-forced (the reservation test counts within-share requests, and usage is charged at
-release).
+(v0.1.0) implements in its `fairshare` package, with the two refinements the
+simulator forced (the reservation test counts within-share requests, and usage is
+charged at release). It replaces LiteLLM and the relay here: it holds the keys,
+teams and budgets itself. For this cluster, its configuration (HCL2, not YAML)
+would be, with the shares and the 256-request capacity of the gateway's example:
+
+```hcl
+master_key_file = "/etc/llmflow/master.key"
+
+team "instA" { share = 0.8125 }
+team "instB" { share = 0.1875 }
+
+pool "b300" { capacity = 256 }
+
+model "large-model" {
+  upstream_model = "<model>"
+  pool           = "b300"
+  class          = "interactive"
+  key_file       = "/etc/llmflow/vllm.key"
+  cost {
+    input_per_mtok  = 0.02
+    output_per_mtok = 0.20
+    cached_per_mtok = 0.002
+  }
+  upstream "gpu01" { base_url = "http://gpu01.internal:8000" }
+  upstream "gpu02" { base_url = "http://gpu02.internal:8000" }
+}
+
+# the same upstreams again, with class = "batch"
+model "large-model-batch" {
+  upstream_model = "<model>"
+  pool           = "b300"
+  class          = "batch"
+  key_file       = "/etc/llmflow/vllm.key"
+  cost {
+    input_per_mtok  = 0.02
+    output_per_mtok = 0.20
+    cached_per_mtok = 0.002
+  }
+  upstream "gpu01" { base_url = "http://gpu01.internal:8000" }
+  upstream "gpu02" { base_url = "http://gpu02.internal:8000" }
+}
+```
+
+The `cost` values are in GPU-hours per million tokens; calibrate them as in the
+[accounting]({{< relref "accounting.md" >}}#calibration) page. Note the gateway's
+[limitations]({{< relref "gateway.md" >}}#limitations), in particular one replica
+per pool.
 
 {{< callout type="info" >}}
 **To validate: how the relay knows the institution.** Two routes. (a) *One
