@@ -13,13 +13,14 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.3.0.** The versions so far:
+**The current release is v0.4.0.** The versions so far:
 
 | Version | Content |
 | --- | --- |
 | [v0.1.0](https://github.com/go-llmflow/gateway/releases/tag/v0.1.0) | virtual keys, teams and budgets in PostgreSQL, HCL2 configuration, admin API, accounting and CSV export, fair-share with borrowing |
 | [v0.2.0](https://github.com/go-llmflow/gateway/releases/tag/v0.2.0) | **governance (roadmap milestone M1)**: the hierarchy organisation → team → project → key, roles, budgets on every scope, tags, soft-budget alerts, spend reports. **Breaking**, see below |
 | [v0.3.0](https://github.com/go-llmflow/gateway/releases/tag/v0.3.0) | **security**: per-tenant prefix-cache isolation. **Breaking**: a new mandatory key file, see [Security](#security) |
+| [v0.4.0](https://github.com/go-llmflow/gateway/releases/tag/v0.4.0) | **identity and access (roadmap milestone M2)**, built on [go-authn](https://github.com/go-authn): OpenID Connect tokens on the inference API (`jwt`), administrator single sign-on (`sso`), SAML federations through a bridge, SCIM provisioning (`scim`), key rotation (`key_rotation`), trusted proxies, IP allowlists, route restrictions, secrets from OpenBao or Vault. See [Identity]({{< relref "identity.md" >}}) |
 
 ```sh
 go install github.com/go-llmflow/gateway/cmd/llmflow-gateway@latest
@@ -105,7 +106,11 @@ token.
 | Route | Purpose |
 | --- | --- |
 | `GET /admin/whoami` | the caller and their roles |
-| `GET`, `POST /admin/users`; `DELETE /admin/users/{name}`; `.../tokens`; `.../roles` | users, their tokens and their roles |
+| `GET /admin/login`, `/admin/callback`, `/admin/session`; `POST /admin/logout` | administrator single sign-on (see [Identity]({{< relref "identity.md" >}}#sso)) |
+| `GET`, `POST /admin/users`; `DELETE /admin/users/{name}`; `.../tokens`; `.../roles` | users, their tokens and their roles; names may contain `@` and `+` |
+| `GET`, `PUT /admin/allowlists` | IP allowlists on an organisation, a team or a key |
+| `POST /admin/keys/{id}/rotate`; `PUT /admin/keys/{id}/rotation` | rotate a key's secret now, or on a schedule |
+| `/scim/v2` | SCIM 2.0 provisioning, with a `scim` block |
 | `GET`, `POST /admin/orgs`; `DELETE /admin/orgs/{name}` | organisations (one created here has no share: it only borrows) |
 | `GET /admin/teams?org=`, `POST /admin/teams`; `DELETE /admin/teams/{name}` | teams |
 | `GET`, `POST /admin/teams/{team}/projects`; `DELETE .../projects/{name}` | projects |
@@ -126,7 +131,7 @@ webhook and/or by e-mail through an SMTP relay.
 The configuration is written in
 [HCL2 native syntax](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md);
 the repository's `examples/gateway.hcl` is parsed by its test suite, so it stays
-valid. This extract was run through `llmflow-gateway check-config` v0.3.0 (with
+valid. This extract was run through `llmflow-gateway check-config` v0.4.0 (with
 the key files present):
 
 ```hcl
@@ -173,6 +178,11 @@ model "llama-3.3-70b" {
 | `limits { ... }`, `health { ... }` | body and header sizes, timeouts, maximum request duration and response size; health-check interval, timeout, cooldown and path |
 | `tags { header, allowed }` | the request header clients may tag requests with, and the allowed tags |
 | `cache_isolation`, `cache_salt_key_file` | prefix-cache tenant scope (`org` default, `team`, `key`, `none`) and the HMAC key file (at least 32 bytes; required unless `none`) |
+| `jwt { issuer, audience, type, rpm, map { claim, value, team, project } }` | OpenID Connect access tokens on the inference API; see [Identity]({{< relref "identity.md" >}}#jwt) |
+| `sso { issuer, client_id, client_secret_file, redirect_url, scopes, session_ttl, role { claim, value, role, team } }` | administrator single sign-on |
+| `scim { token_file, base_url, group "<name>" { team, role } }` | SCIM 2.0 provisioning |
+| `vault { address, token_file, ca_file, namespace, cache_ttl }`, `key_rotation { vault_prefix, check_interval }` | OpenBao or Vault secret references (`vault:<mount>/<path>#<field>`), and scheduled key rotation |
+| `trusted_proxies`, `routes { inference, admin, metrics, healthz { allow = [...] } }` | reverse proxies whose `X-Forwarded-For` is read, and the networks allowed per route class |
 | `alerts { webhook_url, webhook_token_file, smtp { server, from, to, username, password_file } }` | where soft-budget alerts go |
 | `auth_failures_per_minute` | failed authentications allowed per client network before a 429 (default 60, 0 disables) |
 
@@ -285,6 +295,13 @@ the gateway ran with its memory store. These are to be measured on the cluster.
   `/v1`, `/v2` and `/inference`; `/invocations` exposes inference without
   authentication. Firewall the vLLM ports
   ([guide]({{< relref "guides/fairshare/inference.md" >}}#securing-vllm)).
+- **Identity (v0.4.0).** OpenID Connect access tokens are verified by
+  go-authn/oidc (no `alg: none`, no HMAC, `aud` and `exp` required, https key
+  fetches rate-limited), administrator sessions use a `__Host-` cookie with CSRF
+  token and Origin check, and every refusal on the inference API is the same 401.
+  `X-Forwarded-For` is read from the right and only from `trusted_proxies`; routes
+  can be restricted to networks; IP allowlists must all match. Details on the
+  [Identity]({{< relref "identity.md" >}}) page.
 - **Keys.** Virtual keys and admin tokens are 256-bit random secrets, stored as
   SHA-256, compared in constant time and shown once. Secrets come from files only
   and never appear in logs, errors or listings.
@@ -350,7 +367,7 @@ PostgreSQL. The estimate undercounts tool-call and reasoning tokens.
 
 ## Limitations {#limitations}
 
-Open defects of v0.3.0, as the repository lists them:
+Open defects of v0.4.0, as the repository lists them:
 
 1. **State is per process.** In-flight counts, rate limits and the key cache live
    in memory: run **one gateway replica per pool**. Several replicas would each
@@ -374,16 +391,24 @@ Open defects of v0.3.0, as the repository lists them:
    cache: role changes apply at once, but the admin API fails with the store.
 10. **Soft-budget alerts are sent once and not retried**: a webhook or SMTP
     failure is logged, and the period is already marked as alerted.
+11. **SSO sessions live in one replica's memory**: behind several replicas, use
+    sticky sessions.
+12. **A person holding a JWT cannot be revoked individually**: disable the team,
+    change the `map` blocks, or revoke at the identity provider; a token already
+    verified stays cached until its `exp` or `key_cache_ttl`.
+13. **SCIM does not expand nested groups**, and a provisioned role on a team that
+    does not exist is logged, not created.
+14. **The audit events are log lines** (`audit=true`); the tamper-evident audit
+    log is the next milestone.
 
 ## Roadmap {#roadmap}
 
 [Issue #7](https://github.com/go-llmflow/gateway/issues/7) tracks shipping every
 LiteLLM Enterprise feature in the open-source gateway. **M1 (governance and
-multi-tenancy) is done**, in v0.2.0. Next come **M2** (identity and access: OpenID
-Connect, JWT, SCIM, key rotation, IP allowlists, secret managers), **M3** (audit
-and logging) and **M4** (guardrails). The version numbers written in the issue
-shift by one: v0.3.0 was taken by the security patch above, so M2 is not v0.3.0
-any more.
+multi-tenancy) is done**, in v0.2.0, and **M2 (identity and access) is done**, in
+v0.4.0. Next is **M3, audit and logging, as v0.5.0** (a tamper-evident audit log
+first), then **M4** (guardrails). The version numbers written in the issue shifted
+by one when v0.3.0 was taken by the security patch.
 
 ## License {#license}
 

@@ -27,7 +27,8 @@ The guide has three layers, one page each:
 3. **One accounting**, in GPU-hours, ties the two:
    [Accounting]({{< relref "accounting.md" >}}).
 
-Then [VS Code access]({{< relref "vscode.md" >}}), the
+Then [VS Code access]({{< relref "vscode.md" >}}), [identity with your
+federation]({{< relref "identity.md" >}}) (RENATER, eduGAIN), the
 [security audit, acceptance tests and governance]({{< relref "audit-and-acceptance.md" >}}),
 and the [bibliography]({{< relref "bibliography.md" >}}).
 

@@ -7,7 +7,8 @@ pinned at the release tag `v0.19.0`).
 Published at <https://go-llmflow.github.io/docs/>:
 
 - **Overview** of the organisation.
-- **Gateway** (v0.3.0): HCL2 configuration, hierarchy and roles, admin API,
+- **Identity**: JWT, single sign-on, SAML federations, SCIM, key rotation.
+- **Gateway** (v0.4.0): HCL2 configuration, hierarchy and roles, admin API,
   fair-share with borrowing, prefix-cache isolation, overhead A/B against LiteLLM,
   limitations, roadmap.
 - **Guide: fair-share on a co-owned GPU cluster**: Slurm, vLLM, the gateway, VS Code
