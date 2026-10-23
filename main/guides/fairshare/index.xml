@@ -555,6 +555,21 @@ proxy [10].&lt;/div&gt;
 &lt;p&gt;Hence the rules: vLLM listens on the cluster&amp;rsquo;s internal interface only; a
 firewall lets only the gateway reach the vLLM ports; the internal key is read
 from a file, never passed in clear in the environment or in shell history.&lt;/p&gt;
+&lt;h3 data-hextra-search-id="prefix-cache-isolation"&gt;Prefix-cache isolation&lt;span class="hx:absolute hx:-mt-20" id="prefix-cache-isolation"&gt;&lt;/span&gt;
+&lt;a href="#prefix-cache-isolation" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;With &lt;code&gt;--enable-prefix-caching&lt;/code&gt;, vLLM reuses cached KV blocks across requests that
+share a prompt prefix. That reuse is a &lt;strong&gt;timing side channel between tenants&lt;/strong&gt;: a
+caller can tell from the time to first token whether a guessed prefix was cached,
+hence whether another institution sent it (vLLM&amp;rsquo;s
+&lt;a href="https://docs.vllm.ai/en/stable/usage/security/" target="_blank" rel="noopener"&gt;security guide&lt;/a&gt;; CVE-2025-46570).
+On a cluster shared by A and B this must be closed. The vLLM mechanism is the
+&lt;code&gt;cache_salt&lt;/code&gt; request field, mixed into the hash of the first KV block. The Go
+&lt;a href="https://go-llmflow.github.io/docs/main/gateway/#prefix-cache-isolation"&gt;gateway&lt;/a&gt; (v0.3.0) always sets
+a stable per-tenant salt (an HMAC of the tenant under a secret key file of at
+least 32 random bytes) and drops the client&amp;rsquo;s own; &lt;code&gt;cache_isolation&lt;/code&gt; chooses the
+tenant (&lt;code&gt;org&lt;/code&gt; by default, &lt;code&gt;team&lt;/code&gt;, &lt;code&gt;key&lt;/code&gt;, or &lt;code&gt;none&lt;/code&gt;). Two limits to keep in mind:
+users inside one scope can still probe each other (&lt;code&gt;team&lt;/code&gt; or &lt;code&gt;key&lt;/code&gt; narrow it, at
+the cost of cache reuse), and &lt;code&gt;cache_salt&lt;/code&gt; is not a hard isolation boundary, which
+only a vLLM instance per tenant is. Rotating the key empties everyone&amp;rsquo;s cache.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="elastic-pool"&gt;Elastic pool&lt;span class="hx:absolute hx:-mt-20" id="elastic-pool"&gt;&lt;/span&gt;
 &lt;a href="#elastic-pool" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;At night and at weekends interactive inference drops. An &lt;code&gt;scontrol update&lt;/code&gt; or a
 &lt;code&gt;scrontab&lt;/code&gt; can stop one instance in two: 8 GPUs go back to the &lt;code&gt;borrow&lt;/code&gt; QOS,
@@ -801,21 +816,33 @@ requests are admitted before borrowing ones; when KV memory runs short, borrower
 are preempted first. Without competition an institution takes everything; under
 saturation each gets its share back.&lt;/p&gt;
 &lt;p&gt;This is the policy the &lt;a href="https://go-llmflow.github.io/docs/main/gateway/#fair-share-with-borrowing"&gt;gateway&lt;/a&gt;
-(v0.1.0) implements in its &lt;code&gt;fairshare&lt;/code&gt; package, with the two refinements the
+(v0.3.0) implements in its &lt;code&gt;fairshare&lt;/code&gt; package, with the two refinements the
 simulator forced (the reservation test counts within-share requests, and usage is
 charged at release). It replaces LiteLLM and the relay here: it holds the keys,
-teams and budgets itself. For this cluster, its configuration (HCL2, not YAML)
-would be, with the shares and the 256-request capacity of the gateway&amp;rsquo;s example:&lt;/p&gt;
+organisations, teams and budgets itself, and the shares belong to the
+&lt;strong&gt;organisations&lt;/strong&gt; (the institutions). For this cluster, its configuration (HCL2,
+not YAML) would be as follows, with the 256-request capacity of the gateway&amp;rsquo;s
+example. This block was run through &lt;code&gt;llmflow-gateway check-config&lt;/code&gt; v0.3.0, with
+the key files present:&lt;/p&gt;
 &lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
 &lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-hcl" data-lang="hcl"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;master_key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/master.key&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;cache_isolation&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;org&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;cache_salt_key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/cache-salt.key&amp;#34;&lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;team &amp;#34;instA&amp;#34; { share&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="m"&gt;8125&lt;/span&gt; }
-&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;team &amp;#34;instB&amp;#34; { share&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="m"&gt;1875&lt;/span&gt; }
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;org&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;instA&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; share&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="m"&gt;8125&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="k"&gt;team&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;a-physics&amp;#34;&lt;/span&gt; {}
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="k"&gt;team&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;a-biology&amp;#34;&lt;/span&gt; {}
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;org&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;instB&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; share&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="m"&gt;1875&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="k"&gt;team&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;b-lab&amp;#34;&lt;/span&gt; {}
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}
 &lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;pool &amp;#34;b300&amp;#34; { capacity&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="m"&gt;256&lt;/span&gt; }
 &lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;model&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;large-model&amp;#34;&lt;/span&gt; {
-&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; upstream_model&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;&amp;lt;model&amp;gt;&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; upstream_model&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;meta-llama/Llama-3.3-70B-Instruct&amp;#34;&lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; pool&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;b300&amp;#34;&lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; class&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;interactive&amp;#34;&lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/vllm.key&amp;#34;&lt;/span&gt;
@@ -830,7 +857,7 @@ would be, with the shares and the 256-request capacity of the gateway&amp;rsquo;
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# the same upstreams again, with class = &amp;#34;batch&amp;#34;
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;model&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;large-model-batch&amp;#34;&lt;/span&gt; {
-&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; upstream_model&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;&amp;lt;model&amp;gt;&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; upstream_model&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;meta-llama/Llama-3.3-70B-Instruct&amp;#34;&lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; pool&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;b300&amp;#34;&lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; class&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;batch&amp;#34;&lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/vllm.key&amp;#34;&lt;/span&gt;
@@ -1186,6 +1213,11 @@ Do not run computation on the login node: go through &lt;code&gt;srun&lt;/code&g
 &lt;td&gt;Logs&lt;/td&gt;
 &lt;td&gt;confidential prompts stored in the database&lt;/td&gt;
 &lt;td&gt;disable message-content logging; keep only spend metadata&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;vLLM prefix cache&lt;/td&gt;
+&lt;td&gt;timing side channel between institutions: a caller detects a cached prefix by its time to first token (CVE-2025-46570)&lt;/td&gt;
+&lt;td&gt;per-tenant &lt;code&gt;cache_salt&lt;/code&gt; set by the gateway (&lt;a href="https://go-llmflow.github.io/docs/main/guides/fairshare/inference/#prefix-cache-isolation"&gt;prefix-cache isolation&lt;/a&gt;); a vLLM instance per tenant if hard isolation is needed&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;Login node&lt;/td&gt;
