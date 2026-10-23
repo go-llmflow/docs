@@ -16,7 +16,7 @@ Everything is **pure Go** (`CGO_ENABLED=0`) and BSD-3-Clause.
 
 | Page | What it says |
 | --- | --- |
-| [Gateway]({{< relref "gateway.md" >}}) | the `gateway` project (v0.3.0): an OpenAI-compatible gateway in front of vLLM. Its configuration, hierarchy and roles, admin API, how fair-share with borrowing works, prefix-cache isolation, preliminary overhead figures, limitations and roadmap |
+| [Gateway]({{< relref "gateway.md" >}}) | the `gateway` project (v0.3.0): an OpenAI-compatible gateway in front of vLLM. Its configuration, hierarchy and roles, admin API, how fair-share with borrowing works, prefix-cache isolation, overhead measurement, limitations and roadmap |
 | [Fair-share on a co-owned GPU cluster]({{< relref "guides/fairshare/_index.md" >}}) | a guide: how two institutions can share a cluster of GPU servers with Slurm (batch), vLLM (inference) and a gateway (keys, quotas, priorities), reached from VS Code |
 
 ## Status {#status}

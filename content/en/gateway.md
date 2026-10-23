@@ -244,25 +244,32 @@ consumes nothing).
 
 ## Overhead {#overhead}
 
-**Preliminary, measured by the maintainers on a loaded machine** (1-minute load
-6 to 7.5). `gateway/bench_test.go` interleaves, on the same client and keep-alive
-connections, one request straight to an upstream that answers instantly and one
-through the gateway (memory store; auth, budgets, limits, fair share, accounting
-and metrics all on the path). Apple M4 Max, one core, 5 runs of 20,000
-interleaved pairs; ranges are min to max over the runs.
+An independent A/B against LiteLLM, measured on **2026-10-23**.
 
-| Added by the gateway | v0.1.0 (load 7.8-8.1) | v0.2.0 (load 6.3-7.5) |
-| --- | --- | --- |
-| p50 | 54.9-55.3 us | 53.2-54.5 us |
-| p99 | 131.2-134.2 us | 128.4-143.9 us |
+**Protocol.** A Go tool, `gwbench`, with tests; its control test sees a planted
+3 ms delay. Requests go one at a time, the order of the targets is randomised at
+every round, and the overhead is paired round by round against a direct call to
+the same fake upstream.
 
-So about **+54 us at p50 and +130 to 144 us at p99** over a direct call. LiteLLM
-reports its own overhead in a response header, which read 3.2 to 4.9 ms on an
-instant upstream. **That is not a comparison**: LiteLLM's figure is self-reported
-per request, the gateway's is an end-to-end difference against a direct call, and
-the machine was loaded. An independent, interleaved A/B of both gateways on an
-idle machine is **pending**; until it is done, no ratio between the two should be
-taken as established.
+**Targets.** LiteLLM 1.106.2 (one process, no database) and llmflow v0.1.0
+(`GOMAXPROCS=1`, memory store), on a small non-streaming request.
+
+**Load.** Each run of 2,000 rounds starts only at a 1-minute load of 4 or less,
+and is discarded if the load ends above 4. A first long run was discarded (the load
+rose to 9.44). Eight runs were kept, at loads 3.30 to 3.94.
+
+**Result**, over 16,000 paired rounds:
+
+| Overhead | p50 | p90 | p99 |
+| --- | --- | --- | --- |
+| LiteLLM | 4.86 ms | 5.26 ms | 6.21 ms |
+| llmflow | 117 us | 161 us | 239 us |
+
+That is about **40 times lower at the median and 26 times at p99**. The per-run
+median varied from 4.84 to 4.93 ms for LiteLLM and from 115 to 120 us for llmflow.
+
+**What it does not measure.** No streaming, no concurrency, and no database write:
+the gateway ran with its memory store. These are to be measured on the cluster.
 
 ## Security {#security}
 
