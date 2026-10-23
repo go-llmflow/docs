@@ -81,6 +81,23 @@ Hence the rules: vLLM listens on the cluster's internal interface only; a
 firewall lets only the gateway reach the vLLM ports; the internal key is read
 from a file, never passed in clear in the environment or in shell history.
 
+### Prefix-cache isolation {#prefix-cache-isolation}
+
+With `--enable-prefix-caching`, vLLM reuses cached KV blocks across requests that
+share a prompt prefix. That reuse is a **timing side channel between tenants**: a
+caller can tell from the time to first token whether a guessed prefix was cached,
+hence whether another institution sent it (vLLM's
+[security guide](https://docs.vllm.ai/en/stable/usage/security/); CVE-2025-46570).
+On a cluster shared by A and B this must be closed. The vLLM mechanism is the
+`cache_salt` request field, mixed into the hash of the first KV block. The Go
+[gateway]({{< relref "gateway.md" >}}#prefix-cache-isolation) (v0.3.0) always sets
+a stable per-tenant salt (an HMAC of the tenant under a secret key file of at
+least 32 random bytes) and drops the client's own; `cache_isolation` chooses the
+tenant (`org` by default, `team`, `key`, or `none`). Two limits to keep in mind:
+users inside one scope can still probe each other (`team` or `key` narrow it, at
+the cost of cache reuse), and `cache_salt` is not a hard isolation boundary, which
+only a vLLM instance per tenant is. Rotating the key empties everyone's cache.
+
 ## Elastic pool {#elastic-pool}
 
 At night and at weekends interactive inference drops. An `scontrol update` or a
@@ -287,22 +304,34 @@ are preempted first. Without competition an institution takes everything; under
 saturation each gets its share back.
 
 This is the policy the [gateway]({{< relref "gateway.md" >}}#fair-share-with-borrowing)
-(v0.1.0) implements in its `fairshare` package, with the two refinements the
+(v0.3.0) implements in its `fairshare` package, with the two refinements the
 simulator forced (the reservation test counts within-share requests, and usage is
 charged at release). It replaces LiteLLM and the relay here: it holds the keys,
-teams and budgets itself. For this cluster, its configuration (HCL2, not YAML)
-would be, with the shares and the 256-request capacity of the gateway's example:
+organisations, teams and budgets itself, and the shares belong to the
+**organisations** (the institutions). For this cluster, its configuration (HCL2,
+not YAML) would be as follows, with the 256-request capacity of the gateway's
+example. This block was run through `llmflow-gateway check-config` v0.3.0, with
+the key files present:
 
 ```hcl
-master_key_file = "/etc/llmflow/master.key"
+master_key_file     = "/etc/llmflow/master.key"
+cache_isolation     = "org"
+cache_salt_key_file = "/etc/llmflow/cache-salt.key"
 
-team "instA" { share = 0.8125 }
-team "instB" { share = 0.1875 }
+org "instA" {
+  share = 0.8125
+  team "a-physics" {}
+  team "a-biology" {}
+}
+org "instB" {
+  share = 0.1875
+  team "b-lab" {}
+}
 
 pool "b300" { capacity = 256 }
 
 model "large-model" {
-  upstream_model = "<model>"
+  upstream_model = "meta-llama/Llama-3.3-70B-Instruct"
   pool           = "b300"
   class          = "interactive"
   key_file       = "/etc/llmflow/vllm.key"
@@ -317,7 +346,7 @@ model "large-model" {
 
 # the same upstreams again, with class = "batch"
 model "large-model-batch" {
-  upstream_model = "<model>"
+  upstream_model = "meta-llama/Llama-3.3-70B-Instruct"
   pool           = "b300"
   class          = "batch"
   key_file       = "/etc/llmflow/vllm.key"
