@@ -16,14 +16,16 @@ Everything is **pure Go** (`CGO_ENABLED=0`) and BSD-3-Clause.
 
 | Page | What it says |
 | --- | --- |
-| [Gateway]({{< relref "gateway.md" >}}) | the `gateway` project (v0.1.0): an OpenAI-compatible gateway in front of vLLM. Its configuration, admin API, how fair-share with borrowing works, overhead measurement, security, limitations and roadmap |
+| [Gateway]({{< relref "gateway.md" >}}) | the `gateway` project (v0.3.0): an OpenAI-compatible gateway in front of vLLM. Its configuration, hierarchy and roles, admin API, how fair-share with borrowing works, prefix-cache isolation, preliminary overhead figures, limitations and roadmap |
 | [Fair-share on a co-owned GPU cluster]({{< relref "guides/fairshare/_index.md" >}}) | a guide: how two institutions can share a cluster of GPU servers with Slurm (batch), vLLM (inference) and a gateway (keys, quotas, priorities), reached from VS Code |
 
 ## Status {#status}
 
 The organisation has one repository with code, [`gateway`](https://github.com/go-llmflow/gateway),
-and **v0.1.0 is released**: virtual keys, teams and budgets in PostgreSQL,
-HCL2 configuration, an admin API, and fair-share with borrowing. The
+and its **current release is v0.3.0**: virtual keys, budgets on every scope of an
+organisation, team, project and key hierarchy with delegated roles, HCL2
+configuration, an admin API, fair-share with borrowing, and per-tenant
+prefix-cache isolation. The
 [Gateway]({{< relref "gateway.md" >}}) page lists what it does, how it is
 configured, what was measured, and its open limitations and roadmap.
 

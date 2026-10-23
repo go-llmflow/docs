@@ -15,6 +15,7 @@ weight: 60
 | Gateway | budgets inoperative on a zero-cost model [11] | non-zero internal cost ([accounting]({{< relref "accounting.md" >}})) |
 | Keys | leak through a URL, a command line or an environment variable | files with mode 0600; Continue secrets; rotation; one key per use |
 | Logs | confidential prompts stored in the database | disable message-content logging; keep only spend metadata |
+| vLLM prefix cache | timing side channel between institutions: a caller detects a cached prefix by its time to first token (CVE-2025-46570) | per-tenant `cache_salt` set by the gateway ([prefix-cache isolation]({{< relref "inference.md" >}}#prefix-cache-isolation)); a vLLM instance per tenant if hard isolation is needed |
 | Login node | computation outside Slurm | per-user cgroup limits; SSH access to GPU nodes reserved to jobs |
 | Preemption | loss of work of borrowed jobs | `GraceTime` plus checkpoint; `PreemptExemptTime` |
 | vLLM priority | a client gives itself priority 0 through `extra_body` (**measured**, [measurements]({{< relref "inference.md" >}}#what-litellm-forwards)) | priority pinned by *header*; client-header forwarding disabled; the relay (or the Go gateway) overwrites |
