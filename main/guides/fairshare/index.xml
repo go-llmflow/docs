@@ -816,13 +816,13 @@ requests are admitted before borrowing ones; when KV memory runs short, borrower
 are preempted first. Without competition an institution takes everything; under
 saturation each gets its share back.&lt;/p&gt;
 &lt;p&gt;This is the policy the &lt;a href="https://go-llmflow.github.io/docs/main/gateway/#fair-share-with-borrowing"&gt;gateway&lt;/a&gt;
-(v0.3.0) implements in its &lt;code&gt;fairshare&lt;/code&gt; package, with the two refinements the
+(v0.4.0) implements in its &lt;code&gt;fairshare&lt;/code&gt; package, with the two refinements the
 simulator forced (the reservation test counts within-share requests, and usage is
 charged at release). It replaces LiteLLM and the relay here: it holds the keys,
 organisations, teams and budgets itself, and the shares belong to the
 &lt;strong&gt;organisations&lt;/strong&gt; (the institutions). For this cluster, its configuration (HCL2,
 not YAML) would be as follows, with the 256-request capacity of the gateway&amp;rsquo;s
-example. This block was run through &lt;code&gt;llmflow-gateway check-config&lt;/code&gt; v0.3.0, with
+example. This block was run through &lt;code&gt;llmflow-gateway check-config&lt;/code&gt; v0.4.0, with
 the key files present:&lt;/p&gt;
 &lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
 &lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-hcl" data-lang="hcl"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;master_key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/master.key&amp;#34;&lt;/span&gt;
@@ -1173,7 +1173,119 @@ Socket&lt;/em&gt; for security [18].&lt;/p&gt;
 on that node (systemd cgroups) so that one session does not penalise the others.
 Do not run computation on the login node: go through &lt;code&gt;srun&lt;/code&gt;/&lt;code&gt;sbatch&lt;/code&gt;.&lt;/div&gt;
 &lt;/div&gt;
-&lt;/div&gt;</description></item><item><title>Security audit, acceptance tests, governance</title><link>https://go-llmflow.github.io/docs/main/guides/fairshare/audit-and-acceptance/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://go-llmflow.github.io/docs/main/guides/fairshare/audit-and-acceptance/</guid><description>
+&lt;/div&gt;</description></item><item><title>Identity with your federation</title><link>https://go-llmflow.github.io/docs/main/guides/fairshare/identity/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://go-llmflow.github.io/docs/main/guides/fairshare/identity/</guid><description>
+&lt;h1 data-hextra-search-id="identity"&gt;Identity with your federation&lt;/h1&gt;&lt;p&gt;On a cluster co-owned by two institutions, people already have an account at their
+own institution. The aim is that nobody needs a second one: A&amp;rsquo;s and B&amp;rsquo;s users log
+in where they always do, and the gateway learns from that login which team they
+belong to.&lt;/p&gt;
+&lt;p&gt;If the institutions are in a SAML federation such as &lt;strong&gt;RENATER&lt;/strong&gt; (France) or
+&lt;strong&gt;eduGAIN&lt;/strong&gt;, the piece in the middle is
+&lt;a href="https://github.com/go-authn/bridge" target="_blank" rel="noopener"&gt;authn-bridge&lt;/a&gt; (go-authn/bridge): an OpenID
+Connect provider placed in front of the federation. People log in at their own
+university; the gateway, which speaks OpenID Connect, gets a token. The bridge and
+the libraries below are documented in
+&lt;a href="https://github.com/go-authn" target="_blank" rel="noopener"&gt;go-authn&amp;rsquo;s repositories&lt;/a&gt;; this page only shows how
+the gateway is pointed at them.&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;user ──&amp;gt; their university (SAML, RENATER / eduGAIN)
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; v
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; authn-bridge (OpenID Connect provider)
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; │ token
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; v
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; llmflow gateway: sso (administrators), jwt (inference API) ──&amp;gt; vLLM&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;h2 data-hextra-search-id="bridge"&gt;1. Register the gateway at the bridge&lt;span class="hx:absolute hx:-mt-20" id="bridge"&gt;&lt;/span&gt;
+&lt;a href="#bridge" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The gateway is a client of the bridge. This block is authn-bridge&amp;rsquo;s configuration,
+copied from the gateway&amp;rsquo;s README (it is not &lt;code&gt;llmflow-gateway&lt;/code&gt; configuration, so
+&lt;code&gt;check-config&lt;/code&gt; does not apply to it):&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-hcl" data-lang="hcl"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;client&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;llmflow-admin&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; secret_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/authn-bridge/llmflow-admin.secret&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; redirect_uris&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;https://llm.example.org/admin/callback&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; id_token_claims&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="kt"&gt;true&lt;/span&gt;&lt;span class="c1"&gt; # the bridge&amp;#39;s ID tokens carry no claims about the person otherwise
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;h2 data-hextra-search-id="gateway"&gt;2. Point the gateway&amp;rsquo;s &lt;code&gt;sso&lt;/code&gt; and &lt;code&gt;jwt&lt;/code&gt; blocks at the bridge&lt;span class="hx:absolute hx:-mt-20" id="gateway"&gt;&lt;/span&gt;
+&lt;a href="#gateway" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Administrators log in through &lt;code&gt;sso&lt;/code&gt;; users of the inference API present the access
+token through &lt;code&gt;jwt&lt;/code&gt;. The &lt;code&gt;groups&lt;/code&gt; the bridge returns are entitlements held to the
+institution that asserted them, so the &lt;code&gt;role&lt;/code&gt; and &lt;code&gt;map&lt;/code&gt; blocks match them. This
+block was run through &lt;code&gt;llmflow-gateway check-config&lt;/code&gt; v0.4.0 (with the key files
+present, and organisations, a pool and a model alongside):&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-hcl" data-lang="hcl"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;master_key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/master.key&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;cache_salt_key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/cache-salt.key&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;sso&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; issuer&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;https://bridge.example.org&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; client_id&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;llmflow-admin&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; client_secret_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/sso.secret&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; redirect_url&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;https://llm.example.org/admin/callback&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; scopes&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;openid&amp;#34;, &amp;#34;profile&amp;#34;, &amp;#34;groups&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="k"&gt;role&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; value&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;llm-admins&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; role&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;proxy_admin&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; }
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="k"&gt;role&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; value&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;b-lab-leads&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; role&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;team_admin&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; team&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;b-lab&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; }
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;jwt&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; issuer&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;https://bridge.example.org&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; audience&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;llmflow&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;at+jwt&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="k"&gt;map&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; value&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;b-lab&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; team&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;b-lab&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; }
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;With this, a member of B&amp;rsquo;s laboratory who holds a token with the group &lt;code&gt;b-lab&lt;/code&gt;
+reaches the gateway as a person of team &lt;code&gt;b-lab&lt;/code&gt;: their requests count in B&amp;rsquo;s
+share, their budget and limits are the team&amp;rsquo;s, and the spend report names them.
+The &lt;code&gt;value&lt;/code&gt; strings stand for whatever entitlements your federation really issues
+(for example &lt;code&gt;urn:mace:...&lt;/code&gt; values); read them from a real token before writing
+the blocks.&lt;/p&gt;
+&lt;p&gt;Behind it, the gateway refuses &lt;code&gt;alg: none&lt;/code&gt; and HMAC tokens, requires &lt;code&gt;aud&lt;/code&gt; and
+&lt;code&gt;exp&lt;/code&gt;, and answers every refusal with the same 401. See the
+&lt;a href="https://go-llmflow.github.io/docs/main/guides/fairshare/identity/"&gt;Identity page&lt;/a&gt; for the details, for SCIM
+provisioning and for key rotation, and keep in mind its
+&lt;a href="https://go-llmflow.github.io/docs/main/gateway/#limitations"&gt;limitations&lt;/a&gt;: a person holding a token
+cannot be revoked individually before it expires, and SSO sessions live in one
+replica.&lt;/p&gt;</description></item><item><title>Security audit, acceptance tests, governance</title><link>https://go-llmflow.github.io/docs/main/guides/fairshare/audit-and-acceptance/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://go-llmflow.github.io/docs/main/guides/fairshare/audit-and-acceptance/</guid><description>
 &lt;h1 data-hextra-search-id="audit"&gt;Security audit, acceptance and governance&lt;/h1&gt;&lt;h2 data-hextra-search-id="security-audit"&gt;Security audit&lt;span class="hx:absolute hx:-mt-20" id="security-audit"&gt;&lt;/span&gt;
 &lt;a href="#security-audit" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;table&gt;
 &lt;thead&gt;
