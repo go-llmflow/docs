@@ -1,0 +1,69 @@
+# go-llmflow documentation — Hugo + Hextra, built like go-compressions/docs.
+#
+# Each documentation version is a separate build under
+# https://go-llmflow.github.io/docs/<version>/, where <version> is the minor
+# version of the code the pages describe, or "main" while no release is tagged.
+# The CI sets it through --baseURL, from params.docs.version below; this
+# default is the same build.
+baseURL: "https://go-llmflow.github.io/docs/main/"
+title: "go-llmflow docs"
+
+# themes/hextra is the tannevaled/hextra fork, pinned at a release tag as a
+# submodule: upstream Hextra plus opt-in features.
+theme: hextra
+
+defaultContentLanguage: en
+defaultContentLanguageInSubdir: false
+
+languages:
+  en:
+    label: "English"
+    contentDir: content/en
+    weight: 1
+
+enableRobotsTXT: true
+# Git history dates every page: "Last updated on" at the foot of each one.
+enableGitInfo: true
+
+markup:
+  goldmark:
+    renderer:
+      unsafe: true
+    parser:
+      attribute:
+        title: true
+        block: true
+  highlight:
+    noClasses: false
+
+# ⛔ The content is NOT under content/en/docs. This site is served AT /docs/,
+# so a "docs" section would make every page /docs/docs/… . Hextra picks its
+# documentation layout from the section being called "docs", so with the
+# content at the root the type is cascaded instead.
+# ⛔ "target", not "_target" (deprecated in Hugo 0.156); the build runs with
+# --panicOnWarning.
+cascade:
+  - target:
+      path: "/**"
+    params:
+      type: docs
+
+params:
+  docs:
+    version: "main"
+  description: "go-llmflow: high-performance LLM inference and serving in Go. The gateway (an OpenAI-compatible gateway in front of vLLM with fair-share and borrowing) and a guide to sharing a co-owned GPU cluster."
+  navbar:
+    displayTitle: true
+    displayLogo: false
+  theme:
+    default: system
+    displayToggle: true
+  footer:
+    enable: true
+    displayCopyright: false
+    displayPoweredBy: false
+  page:
+    width: normal
+  editURL:
+    enable: true
+    base: "https://github.com/go-llmflow/docs/edit/main/content/en"
