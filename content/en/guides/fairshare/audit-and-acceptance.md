@@ -22,6 +22,16 @@ weight: 60
 | Header forwarding | the client's `x-pass-*` and `x-*` reach vLLM if forwarding is on [23] | leave `forward_client_headers_to_llm_api` disabled |
 | FP64 usage | double-precision codes on B300 (10 TFLOPS per server) [12] | usage rule in the agreement |
 
+**Audit anchor.** The Go gateway (v0.5.0) keeps a hash-chained audit log of every
+administrative change, with signed checkpoints. A log in the database that the
+operator can edit is only partly trustworthy: deploy the audit **anchor** on the
+same S3 or Ceph storage the cluster already has, in a bucket created with **Object
+Lock**, so that exported checkpoints cannot be deleted or rewritten, and check the
+log with `llmflow-gateway audit verify --anchor export` and a public key kept
+outside the operators' reach. Without an anchor, truncation and rollback go
+undetected. The
+[Audit and logging]({{< relref "audit.md" >}}) page states what remains open.
+
 **Chaos to play during acceptance.** Kill a vLLM instance under sustained traffic
 (the routing must fail over); cut Redis (the *fail-closed* mode must answer 503,
 not let requests through); preempt a borrowed job in the middle of writing a
