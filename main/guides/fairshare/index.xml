@@ -816,13 +816,13 @@ requests are admitted before borrowing ones; when KV memory runs short, borrower
 are preempted first. Without competition an institution takes everything; under
 saturation each gets its share back.&lt;/p&gt;
 &lt;p&gt;This is the policy the &lt;a href="https://go-llmflow.github.io/docs/main/gateway/#fair-share-with-borrowing"&gt;gateway&lt;/a&gt;
-(v0.4.0) implements in its &lt;code&gt;fairshare&lt;/code&gt; package, with the two refinements the
+(v0.5.0) implements in its &lt;code&gt;fairshare&lt;/code&gt; package, with the two refinements the
 simulator forced (the reservation test counts within-share requests, and usage is
 charged at release). It replaces LiteLLM and the relay here: it holds the keys,
 organisations, teams and budgets itself, and the shares belong to the
 &lt;strong&gt;organisations&lt;/strong&gt; (the institutions). For this cluster, its configuration (HCL2,
 not YAML) would be as follows, with the 256-request capacity of the gateway&amp;rsquo;s
-example. This block was run through &lt;code&gt;llmflow-gateway check-config&lt;/code&gt; v0.4.0, with
+example. This block was run through &lt;code&gt;llmflow-gateway check-config&lt;/code&gt; v0.5.0, with
 the key files present:&lt;/p&gt;
 &lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
 &lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-hcl" data-lang="hcl"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;master_key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/master.key&amp;#34;&lt;/span&gt;
@@ -1358,6 +1358,15 @@ replica.&lt;/p&gt;</description></item><item><title>Security audit, acceptance t
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
+&lt;p&gt;&lt;strong&gt;Audit anchor.&lt;/strong&gt; The Go gateway (v0.5.0) keeps a hash-chained audit log of every
+administrative change, with signed checkpoints. A log in the database that the
+operator can edit is only partly trustworthy: deploy the audit &lt;strong&gt;anchor&lt;/strong&gt; on the
+same S3 or Ceph storage the cluster already has, in a bucket created with &lt;strong&gt;Object
+Lock&lt;/strong&gt;, so that exported checkpoints cannot be deleted or rewritten, and check the
+log with &lt;code&gt;llmflow-gateway audit verify --anchor export&lt;/code&gt; and a public key kept
+outside the operators&amp;rsquo; reach. Without an anchor, truncation and rollback go
+undetected. The
+&lt;a href="https://go-llmflow.github.io/docs/main/audit/"&gt;Audit and logging&lt;/a&gt; page states what remains open.&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;Chaos to play during acceptance.&lt;/strong&gt; Kill a vLLM instance under sustained traffic
 (the routing must fail over); cut Redis (the &lt;em&gt;fail-closed&lt;/em&gt; mode must answer 503,
 not let requests through); preempt a borrowed job in the middle of writing a
