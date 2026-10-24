@@ -13,7 +13,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.4.0.** The versions so far:
+**The current release is v0.5.0.** The versions so far:
 
 | Version | Content |
 | --- | --- |
@@ -21,6 +21,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.2.0](https://github.com/go-llmflow/gateway/releases/tag/v0.2.0) | **governance (roadmap milestone M1)**: the hierarchy organisation → team → project → key, roles, budgets on every scope, tags, soft-budget alerts, spend reports. **Breaking**, see below |
 | [v0.3.0](https://github.com/go-llmflow/gateway/releases/tag/v0.3.0) | **security**: per-tenant prefix-cache isolation. **Breaking**: a new mandatory key file, see [Security](#security) |
 | [v0.4.0](https://github.com/go-llmflow/gateway/releases/tag/v0.4.0) | **identity and access (roadmap milestone M2)**, built on [go-authn](https://github.com/go-authn): OpenID Connect tokens on the inference API (`jwt`), administrator single sign-on (`sso`), SAML federations through a bridge, SCIM provisioning (`scim`), key rotation (`key_rotation`), trusted proxies, IP allowlists, route restrictions, secrets from OpenBao or Vault. See [Identity]({{< relref "identity.md" >}}) |
+| [v0.5.0](https://github.com/go-llmflow/gateway/releases/tag/v0.5.0) | **audit and logging (roadmap milestone M3)**: a hash-chained admin audit log with signed Ed25519 checkpoints and external anchors, per-team request logs (content off by default), retention, request policies, retried alerts. See [Audit and logging]({{< relref "audit.md" >}}) |
 
 ```sh
 go install github.com/go-llmflow/gateway/cmd/llmflow-gateway@latest
@@ -131,7 +132,7 @@ webhook and/or by e-mail through an SMTP relay.
 The configuration is written in
 [HCL2 native syntax](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md);
 the repository's `examples/gateway.hcl` is parsed by its test suite, so it stays
-valid. This extract was run through `llmflow-gateway check-config` v0.4.0 (with
+valid. This extract was run through `llmflow-gateway check-config` v0.5.0 (with
 the key files present):
 
 ```hcl
@@ -183,6 +184,9 @@ model "llama-3.3-70b" {
 | `scim { token_file, base_url, group "<name>" { team, role } }` | SCIM 2.0 provisioning |
 | `vault { address, token_file, ca_file, namespace, cache_ttl }`, `key_rotation { vault_prefix, check_interval }` | OpenBao or Vault secret references (`vault:<mount>/<path>#<field>`), and scheduled key rotation |
 | `trusted_proxies`, `routes { inference, admin, metrics, healthz { allow = [...] } }` | reverse proxies whose `X-Forwarded-For` is read, and the networks allowed per route class |
+| `audit { signing_key_file, checkpoint_interval, anchor, anchor_max_lag, retention, prune_interval }`, `export "<name>" { kind, endpoint, bucket, ... }` | the admin audit log and where its checkpoints, and the request logs, are exported; see [Audit and logging]({{< relref "audit.md" >}}) |
+| `logging "<name>" { teams, destination, content, ... }` | per-team request logs; content is off by default |
+| `policy "<name>" { teams, require, require_tags, max_body_bytes, max_response_bytes }` | required fields and tags, and per-team or per-key size limits (`POST /admin/keys {"policy"}`) |
 | `alerts { webhook_url, webhook_token_file, smtp { server, from, to, username, password_file } }` | where soft-budget alerts go |
 | `auth_failures_per_minute` | failed authentications allowed per client network before a 429 (default 60, 0 disables) |
 
@@ -302,6 +306,10 @@ the gateway ran with its memory store. These are to be measured on the cluster.
   `X-Forwarded-For` is read from the right and only from `trusted_proxies`; routes
   can be restricted to networks; IP allowlists must all match. Details on the
   [Identity]({{< relref "identity.md" >}}) page.
+- **Audit (v0.5.0).** Admin actions are in a hash-chained log with signed
+  checkpoints, which an anchor on write-once storage makes hard to rewrite. What
+  stays open is stated on the [Audit and logging]({{< relref "audit.md" >}}#threat-model)
+  page.
 - **Keys.** Virtual keys and admin tokens are 256-bit random secrets, stored as
   SHA-256, compared in constant time and shown once. Secrets come from files only
   and never appear in logs, errors or listings.
@@ -367,7 +375,7 @@ PostgreSQL. The estimate undercounts tool-call and reasoning tokens.
 
 ## Limitations {#limitations}
 
-Open defects of v0.4.0, as the repository lists them:
+Open defects of v0.5.0, as the repository lists them:
 
 1. **State is per process.** In-flight counts, rate limits and the key cache live
    in memory: run **one gateway replica per pool**. Several replicas would each
@@ -389,8 +397,11 @@ Open defects of v0.4.0, as the repository lists them:
 8. **`C` is static configuration**; the gateway does not measure or adapt it.
 9. **Admin principals are read from the store on every admin request**, with no
    cache: role changes apply at once, but the admin API fails with the store.
-10. **Soft-budget alerts are sent once and not retried**: a webhook or SMTP
-    failure is logged, and the period is already marked as alerted.
+10. **Soft-budget alert retries live in memory.** Each channel (webhook, SMTP) is
+    retried on its own, up to 6 attempts with exponential backoff; a 4xx other
+    than 408 and 429 is not retried; every webhook attempt carries the same
+    `Idempotency-Key`. A gateway stopped mid-retry does not resume: the period is
+    already marked as alerted.
 11. **SSO sessions live in one replica's memory**: behind several replicas, use
     sticky sessions.
 12. **A person holding a JWT cannot be revoked individually**: disable the team,
@@ -398,17 +409,22 @@ Open defects of v0.4.0, as the repository lists them:
     verified stays cached until its `exp` or `key_cache_ttl`.
 13. **SCIM does not expand nested groups**, and a provisioned role on a team that
     does not exist is logged, not created.
-14. **The audit events are log lines** (`audit=true`); the tamper-evident audit
-    log is the next milestone.
+14. **The audit log's guarantees end at its newest anchor.** Without an anchor
+    export, truncation, rollback and deletion of the database go undetected; with
+    one, what happened after the newest exported checkpoint can still be removed,
+    and a stolen signing key can sign new history after it. Keep the key in
+    OpenBao or Vault, verify with a public key kept elsewhere, and keep an anchor
+    on write-once storage. See the
+    [threat model]({{< relref "audit.md" >}}#threat-model).
 
 ## Roadmap {#roadmap}
 
 [Issue #7](https://github.com/go-llmflow/gateway/issues/7) tracks shipping every
 LiteLLM Enterprise feature in the open-source gateway. **M1 (governance and
-multi-tenancy) is done**, in v0.2.0, and **M2 (identity and access) is done**, in
-v0.4.0. Next is **M3, audit and logging, as v0.5.0** (a tamper-evident audit log
-first), then **M4** (guardrails). The version numbers written in the issue shifted
-by one when v0.3.0 was taken by the security patch.
+multi-tenancy) is done**, in v0.2.0, **M2 (identity and access)** in v0.4.0, and
+**M3 (audit and logging)** in v0.5.0. Next is **M4, guardrails, as v0.6.0**. The
+version numbers written in the issue shifted by one when v0.3.0 was taken by the
+security patch.
 
 ## License {#license}
 
