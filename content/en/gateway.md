@@ -13,7 +13,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.5.0.** The versions so far:
+**The current release is v0.6.0.** The versions so far:
 
 | Version | Content |
 | --- | --- |
@@ -22,6 +22,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.3.0](https://github.com/go-llmflow/gateway/releases/tag/v0.3.0) | **security**: per-tenant prefix-cache isolation. **Breaking**: a new mandatory key file, see [Security](#security) |
 | [v0.4.0](https://github.com/go-llmflow/gateway/releases/tag/v0.4.0) | **identity and access (roadmap milestone M2)**, built on [go-authn](https://github.com/go-authn): OpenID Connect tokens on the inference API (`jwt`), administrator single sign-on (`sso`), SAML federations through a bridge, SCIM provisioning (`scim`), key rotation (`key_rotation`), trusted proxies, IP allowlists, route restrictions, secrets from OpenBao or Vault. See [Identity]({{< relref "identity.md" >}}) |
 | [v0.5.0](https://github.com/go-llmflow/gateway/releases/tag/v0.5.0) | **audit and logging (roadmap milestone M3)**: a hash-chained admin audit log with signed Ed25519 checkpoints and external anchors, per-team request logs (content off by default), retention, request policies, retried alerts. See [Audit and logging]({{< relref "audit.md" >}}) |
+| [v0.6.0](https://github.com/go-llmflow/gateway/releases/tag/v0.6.0) | **guardrails (roadmap milestone M4)**: checks on prompts and completions, `hide_secrets`, `pii` (built on [go-llmflow/pii]({{< relref "pii.md" >}})), Llama Guard and Prompt Guard; the HTTP adapter is off by default. See "Guardrails" in the repository's README |
 
 ```sh
 go install github.com/go-llmflow/gateway/cmd/llmflow-gateway@latest
@@ -422,7 +423,7 @@ Open defects of v0.5.0, as the repository lists them:
 [Issue #7](https://github.com/go-llmflow/gateway/issues/7) tracks shipping every
 LiteLLM Enterprise feature in the open-source gateway. **M1 (governance and
 multi-tenancy) is done**, in v0.2.0, **M2 (identity and access)** in v0.4.0, and
-**M3 (audit and logging)** in v0.5.0. Next is **M4, guardrails, as v0.6.0**. The
+**M3 (audit and logging)** in v0.5.0, and **M4 (guardrails)** in v0.6.0. The
 version numbers written in the issue shifted by one when v0.3.0 was taken by the
 security patch.
 
