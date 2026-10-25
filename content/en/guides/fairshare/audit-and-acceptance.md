@@ -22,7 +22,7 @@ weight: 60
 | Header forwarding | the client's `x-pass-*` and `x-*` reach vLLM if forwarding is on [23] | leave `forward_client_headers_to_llm_api` disabled |
 | FP64 usage | double-precision codes on B300 (10 TFLOPS per server) [12] | usage rule in the agreement |
 
-**Audit anchor.** The Go gateway (v0.5.0) keeps a hash-chained audit log of every
+**Audit anchor.** The Go gateway (audit log since v0.5.0) keeps a hash-chained audit log of every
 administrative change, with signed checkpoints. A log in the database that the
 operator can edit is only partly trustworthy: deploy the audit **anchor** on the
 same S3 or Ceph storage the cluster already has, in a bucket created with **Object
@@ -31,6 +31,49 @@ log with `llmflow-gateway audit verify --anchor export` and a public key kept
 outside the operators' reach. Without an anchor, truncation and rollback go
 undetected. The
 [Audit and logging]({{< relref "audit.md" >}}) page states what remains open.
+
+**Guardrails (gateway v0.6.0).** Prompts and completions can be checked before
+and after vLLM, on this cluster, without sending them anywhere: `hide_secrets`
+masks tokens and URL credentials (using gitsafe's `redact`), `pii` masks or
+blocks personal data (e-mail, phone, IBAN, French NIR, cards, IP addresses) with
+[go-llmflow/pii]({{< relref "pii.md" >}}), and `llama_guard` and `prompt_guard`
+classify with a Llama Guard or Prompt Guard model served **locally by vLLM** on
+the cluster, as a model of class `guard` that clients cannot call. The classifiers
+see the already-masked text. A guardrail that errs or times out refuses (503) by
+default. The generic **HTTP adapter is off by default**: it exists only when
+written, and then only with `allow_external = true`, because it sends prompts and
+completions out of the site. This block passes `check-config` v0.6.0:
+
+```hcl
+guardrail "secrets" {
+  type = "hide_secrets"
+  orgs = ["instA", "instB"]
+}
+guardrail "pii" {
+  type    = "pii"
+  teams   = ["b-lab"]
+  action  = "mask"
+  actions = { iban = "block", nir = "block", phone = "log" }
+}
+guardrail "safety" {
+  type     = "llama_guard"
+  model    = "llama-guard"
+  teams    = ["b-lab"]
+  action   = "block"
+  timeout  = "2s"
+  on_error = "block"
+}
+
+model "llama-guard" {
+  upstream_model = "meta-llama/Llama-Guard-3-8B"
+  pool           = "guard"
+  class          = "guard"
+  key_file       = "/etc/llmflow/vllm.key"
+  upstream "g0" { base_url = "http://gpu09:8000" }
+}
+```
+
+(Alongside the organisations, teams, the `pool "guard"` and the other models.)
 
 **Chaos to play during acceptance.** Kill a vLLM instance under sustained traffic
 (the routing must fail over); cut Redis (the *fail-closed* mode must answer 503,
