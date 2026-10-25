@@ -12,7 +12,7 @@ Published at <https://go-llmflow.github.io/docs/>:
 - **PII recognisers** (`pii` v0.1.0): the kinds recognised, their checksums, the
   measured false positives.
 - **Coding agents**: Continue, the stateless Responses API, the Anthropic Messages API.
-- **Gateway** (v0.7.0): HCL2 configuration, hierarchy and roles, admin API,
+- **Gateway** (v0.8.0): HCL2 configuration, hierarchy and roles, admin API, admin web UI, MCP gateway,
   fair-share with borrowing, prefix-cache isolation, overhead A/B against LiteLLM,
   guardrails, limitations, roadmap.
 - **Guide: fair-share on a co-owned GPU cluster**: Slurm, vLLM, the gateway, VS Code

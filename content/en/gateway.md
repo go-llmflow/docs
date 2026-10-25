@@ -13,7 +13,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.7.0.** The versions so far:
+**The current release is v0.8.0.** The versions so far:
 
 | Version | Content |
 | --- | --- |
@@ -24,6 +24,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.5.0](https://github.com/go-llmflow/gateway/releases/tag/v0.5.0) | **audit and logging (roadmap milestone M3)**: a hash-chained admin audit log with signed Ed25519 checkpoints and external anchors, per-team request logs (content off by default), retention, request policies, retried alerts. See [Audit and logging]({{< relref "audit.md" >}}) |
 | [v0.6.0](https://github.com/go-llmflow/gateway/releases/tag/v0.6.0) | **guardrails (roadmap milestone M4)**: checks on prompts and completions, `hide_secrets`, `pii` (built on [go-llmflow/pii]({{< relref "pii.md" >}})), Llama Guard and Prompt Guard; the HTTP adapter is off by default. See "Guardrails" in the repository's README |
 | [v0.7.0](https://github.com/go-llmflow/gateway/releases/tag/v0.7.0) | **more endpoints (issue #38)**: stateless `/v1/responses`, the Anthropic `/v1/messages`, rerank, tokenization, audio transcription, model fallbacks, OpenTelemetry traces. See [More endpoints](#more-endpoints) and [Coding agents]({{< relref "agents.md" >}}) |
+| [v0.8.0](https://github.com/go-llmflow/gateway/releases/tag/v0.8.0) | **admin web UI and MCP gateway (issue #38, items 6 and 7)**. See [Admin web UI](#admin-ui) and [MCP gateway](#mcp) |
 
 ```sh
 go install github.com/go-llmflow/gateway/cmd/llmflow-gateway@latest
@@ -138,7 +139,7 @@ webhook and/or by e-mail through an SMTP relay.
 The configuration is written in
 [HCL2 native syntax](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md);
 the repository's `examples/gateway.hcl` is parsed by its test suite, so it stays
-valid. This extract was run through `llmflow-gateway check-config` v0.7.0 (with
+valid. This extract was run through `llmflow-gateway check-config` v0.8.0 (with
 the key files present):
 
 ```hcl
@@ -300,7 +301,7 @@ true`. Spans carry metadata only (organisation, team, key id, model, pool, prior
 status, token counts, guardrail verdicts), **never a prompt or an answer**.
 
 This block, with the fallbacks and audio settings above, passes
-`llmflow-gateway check-config` v0.7.0 (with the key files present, and
+`llmflow-gateway check-config` v0.8.0 (with the key files present, and
 organisations, pools and models around it):
 
 ```hcl
@@ -328,6 +329,84 @@ model "whisper" {
   upstream "gpu06" { base_url = "http://gpu06.internal:8000" }
 }
 ```
+
+## Admin web UI {#admin-ui}
+
+With an `sso` block, `/ui/` serves a web console for administrators
+(`/admin/login?next=ui` signs in and lands there). It is **server-rendered HTML
+with no JavaScript**, under a strict policy on every `/ui/` response:
+
+```text
+Content-Security-Policy: default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'
+```
+
+plus `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and
+`Cache-Control: no-store`. The one stylesheet is served by the gateway; no
+third-party asset is loaded.
+
+| Page | What it does |
+| --- | --- |
+| Keys | list per team; create (the secret is shown **once**, on a page that is not cached), rotate with a grace period, revoke |
+| Budgets | budgets with spent and limit; set and delete |
+| Spend | GPU-hours, requests and tokens over a period, grouped by organisation, team, project, key, model, pool or tag |
+| Fair share | live state per pool: reservation, in flight, borrowing, level fairshare and rank |
+| Audit | entries page by page, and a button that verifies the chain (status of the checkpoints and of the anchor) |
+
+The UI holds no privilege of its own: every page calls the admin API's handlers
+in-process with the signed-in person, so it has the **same RBAC as the API** (an
+organisation administrator sees their organisation only) and every change is
+audited as through the API. Only an SSO session is accepted; without an `sso`
+block `/ui/` answers 404. Two admin routes were added for it:
+`GET /admin/audit?from=&limit=` and `POST /admin/audit/verify` (proxy admins and
+viewers only). The verification uses the gateway's own key; for an independent
+check use `llmflow-gateway audit verify` with a public key kept elsewhere (see
+[Audit and logging]({{< relref "audit.md" >}}#verifying)).
+
+## MCP gateway {#mcp}
+
+`POST /mcp` is an [MCP](https://modelcontextprotocol.io/specification/2026-07-28)
+server in front of the tool servers of the configuration. It speaks the Streamable
+HTTP binding of revision **2026-07-28** and, for older clients, the initialize
+handshake of **2025-11-25** (and 2025-06-18, 2025-03-26). A client authenticates
+with its virtual key. This block passes `llmflow-gateway check-config` v0.8.0
+(with the key files present, and an `sso` block, organisations, a pool and a model
+around it):
+
+```hcl
+mcp_server "github" {
+  url                = "https://mcp.example.org/github/mcp"
+  token_file         = "/etc/llmflow/mcp-github.token"
+  protocol           = "2026-07-28"
+  timeout            = "60s"
+  max_response_bytes = 8388608
+}
+```
+
+- **Tools are named `<server>.<tool>`.**
+- **Per-team allow-lists, closed by default.** A team with no list sees no tool.
+  An organisation administrator sets it with `PUT /admin/teams/{team}/tools`
+  `{"tools":["github.*","docs.search"]}` (a pattern is `*`, `<server>.*` or
+  `<server>.<tool>`, and must name a configured server). Team administrators can
+  read the list but cannot widen it. A call to any other tool answers
+  `-32602 Unknown tool`, like a tool that does not exist, and the refusal is
+  audited (`tool.denied`).
+- **Every call is audited before it is made.** A `tool.call` entry names the key,
+  its organisation, team and project, the tool, and the SHA-256 and size of the
+  arguments; **the arguments are hashed, never stored**. If that entry cannot be
+  written, the call is not made (503). A `tool.result` entry follows with the
+  outcome. `llmflow_tool_calls_total{team,server,status}` counts the calls, and the
+  audit retention accepts the kind `tool`.
+- **Only configured servers are reached.** Clients name tools, never URLs; the
+  gateway sends requests only to the `url` of an `mcp_server` block, follows no
+  redirect, uses no environment proxy and never fetches what a server returns. The
+  tool servers' tokens come from the secret source and the client's key is never
+  forwarded.
+- Tool calls count against the key's RPM and in-flight limits and cost no
+  GPU-hours.
+
+**Not covered:** OAuth 2.1 discovery (virtual keys are static bearer tokens),
+resources and prompts, **guardrails on tool arguments and results**, and SSE toward
+MCP clients.
 
 ## How fair-share with borrowing works {#fair-share-with-borrowing}
 
@@ -490,7 +569,7 @@ PostgreSQL. The estimate undercounts tool-call and reasoning tokens.
 
 ## Limitations {#limitations}
 
-Open defects of v0.7.0, as the repository lists them:
+Open defects of v0.8.0, as the repository lists them:
 
 1. **State is per process.** In-flight counts, rate limits and the key cache live
    in memory: run **one gateway replica per pool**. Several replicas would each
@@ -557,9 +636,9 @@ version numbers written in the issue shifted by one when v0.3.0 was taken by the
 security patch.
 
 A further milestone, [issue #38](https://github.com/go-llmflow/gateway/issues/38)
-("M5"), covers more endpoints and operations; its first five items shipped in v0.7.0 (the
-endpoints, fallbacks and tracing described above).
-**v0.8.0 is planned for the admin UI and MCP.**
+("M5"), covers more endpoints and operations. Its first five items shipped in v0.7.0
+(the endpoints, fallbacks and tracing described above), and the last two, the admin
+web UI and the MCP gateway, in v0.8.0. **Issue #38 is closed and M5 is complete.**
 
 ## License {#license}
 

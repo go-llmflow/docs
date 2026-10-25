@@ -48,7 +48,7 @@ client "llmflow-admin" {
 Administrators log in through `sso`; users of the inference API present the access
 token through `jwt`. The `groups` the bridge returns are entitlements held to the
 institution that asserted them, so the `role` and `map` blocks match them. This
-block was run through `llmflow-gateway check-config` v0.7.0 (with the key files
+block was run through `llmflow-gateway check-config` v0.8.0 (with the key files
 present, and organisations, a pool and a model alongside):
 
 ```hcl
