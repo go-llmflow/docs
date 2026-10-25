@@ -16,18 +16,22 @@ Everything is **pure Go** (`CGO_ENABLED=0`) and BSD-3-Clause.
 
 | Page | What it says |
 | --- | --- |
-| [Gateway]({{< relref "gateway.md" >}}) | the `gateway` project (v0.5.0): an OpenAI-compatible gateway in front of vLLM. Its configuration, hierarchy and roles, admin API, how fair-share with borrowing works, prefix-cache isolation, overhead measurement, limitations and roadmap |
+| [Gateway]({{< relref "gateway.md" >}}) | the `gateway` project (v0.6.0): an OpenAI-compatible gateway in front of vLLM. Its configuration, hierarchy and roles, admin API, how fair-share with borrowing works, prefix-cache isolation, overhead measurement, limitations and roadmap |
 | [Identity]({{< relref "identity.md" >}}) | how the gateway takes people from your identity provider: OpenID Connect tokens, administrator single sign-on, SAML federations through a bridge, SCIM provisioning, key rotation |
 | [Audit and logging]({{< relref "audit.md" >}}) | the hash-chained admin audit log, its anchors and what they do not protect against, per-team request logs, retention, request policies |
+| [PII recognisers]({{< relref "pii.md" >}}) | the `pii` library (v0.1.0): e-mail, phone, IBAN, French NIR, payment cards and IP addresses found in text, checksum-validated, with the false positives measured |
 | [Fair-share on a co-owned GPU cluster]({{< relref "guides/fairshare/_index.md" >}}) | a guide: how two institutions can share a cluster of GPU servers with Slurm (batch), vLLM (inference) and a gateway (keys, quotas, priorities), reached from VS Code |
 
 ## Status {#status}
 
-The organisation has one repository with code, [`gateway`](https://github.com/go-llmflow/gateway),
-and its **current release is v0.5.0**: virtual keys, budgets on every scope of an
+The organisation has two repositories with code. [`gateway`](https://github.com/go-llmflow/gateway)
+has its **current release at v0.6.0**: virtual keys, budgets on every scope of an
 organisation, team, project and key hierarchy with delegated roles, HCL2
 configuration, an admin API, fair-share with borrowing, per-tenant prefix-cache
-isolation, and identity (OpenID Connect, single sign-on, SCIM), and an anchored audit log. The
+isolation, identity (OpenID Connect, single sign-on, SCIM), an anchored audit log,
+and guardrails (`hide_secrets`, `pii`, Llama Guard, Prompt Guard; the HTTP adapter
+is off by default). [`pii`](https://github.com/go-llmflow/pii) is a library, at
+v0.1.0, that recognises personal data in text; the gateway's PII guardrail uses it. The
 [Gateway]({{< relref "gateway.md" >}}) page lists what it does, how it is
 configured, what was measured, and its open limitations and roadmap.
 

@@ -9,9 +9,11 @@ Published at <https://go-llmflow.github.io/docs/>:
 - **Overview** of the organisation.
 - **Identity**: JWT, single sign-on, SAML federations, SCIM, key rotation.
 - **Audit and logging**: the anchored audit log, request logs, policies.
-- **Gateway** (v0.5.0): HCL2 configuration, hierarchy and roles, admin API,
+- **PII recognisers** (`pii` v0.1.0): the kinds recognised, their checksums, the
+  measured false positives.
+- **Gateway** (v0.6.0): HCL2 configuration, hierarchy and roles, admin API,
   fair-share with borrowing, prefix-cache isolation, overhead A/B against LiteLLM,
-  limitations, roadmap.
+  guardrails, limitations, roadmap.
 - **Guide: fair-share on a co-owned GPU cluster**: Slurm, vLLM, the gateway, VS Code
   access, security audit, acceptance tests, governance and bibliography.
 
