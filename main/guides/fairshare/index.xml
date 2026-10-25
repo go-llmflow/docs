@@ -816,13 +816,13 @@ requests are admitted before borrowing ones; when KV memory runs short, borrower
 are preempted first. Without competition an institution takes everything; under
 saturation each gets its share back.&lt;/p&gt;
 &lt;p&gt;This is the policy the &lt;a href="https://go-llmflow.github.io/docs/main/gateway/#fair-share-with-borrowing"&gt;gateway&lt;/a&gt;
-(v0.5.0) implements in its &lt;code&gt;fairshare&lt;/code&gt; package, with the two refinements the
+(v0.6.0) implements in its &lt;code&gt;fairshare&lt;/code&gt; package, with the two refinements the
 simulator forced (the reservation test counts within-share requests, and usage is
 charged at release). It replaces LiteLLM and the relay here: it holds the keys,
 organisations, teams and budgets itself, and the shares belong to the
 &lt;strong&gt;organisations&lt;/strong&gt; (the institutions). For this cluster, its configuration (HCL2,
 not YAML) would be as follows, with the 256-request capacity of the gateway&amp;rsquo;s
-example. This block was run through &lt;code&gt;llmflow-gateway check-config&lt;/code&gt; v0.5.0, with
+example. This block was run through &lt;code&gt;llmflow-gateway check-config&lt;/code&gt; v0.6.0, with
 the key files present:&lt;/p&gt;
 &lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
 &lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-hcl" data-lang="hcl"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;master_key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/master.key&amp;#34;&lt;/span&gt;
@@ -1230,7 +1230,7 @@ data-copied-label="Copied!"
 &lt;a href="#gateway" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Administrators log in through &lt;code&gt;sso&lt;/code&gt;; users of the inference API present the access
 token through &lt;code&gt;jwt&lt;/code&gt;. The &lt;code&gt;groups&lt;/code&gt; the bridge returns are entitlements held to the
 institution that asserted them, so the &lt;code&gt;role&lt;/code&gt; and &lt;code&gt;map&lt;/code&gt; blocks match them. This
-block was run through &lt;code&gt;llmflow-gateway check-config&lt;/code&gt; v0.4.0 (with the key files
+block was run through &lt;code&gt;llmflow-gateway check-config&lt;/code&gt; v0.6.0 (with the key files
 present, and organisations, a pool and a model alongside):&lt;/p&gt;
 &lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
 &lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-hcl" data-lang="hcl"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;master_key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/master.key&amp;#34;&lt;/span&gt;
@@ -1358,7 +1358,7 @@ replica.&lt;/p&gt;</description></item><item><title>Security audit, acceptance t
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
-&lt;p&gt;&lt;strong&gt;Audit anchor.&lt;/strong&gt; The Go gateway (v0.5.0) keeps a hash-chained audit log of every
+&lt;p&gt;&lt;strong&gt;Audit anchor.&lt;/strong&gt; The Go gateway (audit log since v0.5.0) keeps a hash-chained audit log of every
 administrative change, with signed checkpoints. A log in the database that the
 operator can edit is only partly trustworthy: deploy the audit &lt;strong&gt;anchor&lt;/strong&gt; on the
 same S3 or Ceph storage the cluster already has, in a bucket created with &lt;strong&gt;Object
@@ -1367,6 +1367,56 @@ log with &lt;code&gt;llmflow-gateway audit verify --anchor export&lt;/code&gt; a
 outside the operators&amp;rsquo; reach. Without an anchor, truncation and rollback go
 undetected. The
 &lt;a href="https://go-llmflow.github.io/docs/main/audit/"&gt;Audit and logging&lt;/a&gt; page states what remains open.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Guardrails (gateway v0.6.0).&lt;/strong&gt; Prompts and completions can be checked before
+and after vLLM, on this cluster, without sending them anywhere: &lt;code&gt;hide_secrets&lt;/code&gt;
+masks tokens and URL credentials (using gitsafe&amp;rsquo;s &lt;code&gt;redact&lt;/code&gt;), &lt;code&gt;pii&lt;/code&gt; masks or
+blocks personal data (e-mail, phone, IBAN, French NIR, cards, IP addresses) with
+&lt;a href="https://go-llmflow.github.io/docs/main/pii/"&gt;go-llmflow/pii&lt;/a&gt;, and &lt;code&gt;llama_guard&lt;/code&gt; and &lt;code&gt;prompt_guard&lt;/code&gt;
+classify with a Llama Guard or Prompt Guard model served &lt;strong&gt;locally by vLLM&lt;/strong&gt; on
+the cluster, as a model of class &lt;code&gt;guard&lt;/code&gt; that clients cannot call. The classifiers
+see the already-masked text. A guardrail that errs or times out refuses (503) by
+default. The generic &lt;strong&gt;HTTP adapter is off by default&lt;/strong&gt;: it exists only when
+written, and then only with &lt;code&gt;allow_external = true&lt;/code&gt;, because it sends prompts and
+completions out of the site. This block passes &lt;code&gt;check-config&lt;/code&gt; v0.6.0:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-hcl" data-lang="hcl"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;guardrail&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;secrets&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;hide_secrets&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; orgs&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;instA&amp;#34;, &amp;#34;instB&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;guardrail&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;pii&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;pii&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; teams&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;b-lab&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; action&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;mask&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; actions&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt; { iban&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt; &amp;#34;block&amp;#34;, nir&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt; &amp;#34;block&amp;#34;, phone&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;log&amp;#34;&lt;/span&gt; }
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;guardrail&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;safety&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;llama_guard&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; model&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;llama-guard&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; teams&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;b-lab&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; action&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;block&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; timeout&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;2s&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; on_error&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;block&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;model&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;llama-guard&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; upstream_model&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;meta-llama/Llama-Guard-3-8B&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; pool&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;guard&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; class&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;guard&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/vllm.key&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; upstream &amp;#34;g0&amp;#34; { base_url&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;http://gpu09:8000&amp;#34;&lt;/span&gt; }
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;(Alongside the organisations, teams, the &lt;code&gt;pool &amp;quot;guard&amp;quot;&lt;/code&gt; and the other models.)&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;Chaos to play during acceptance.&lt;/strong&gt; Kill a vLLM instance under sustained traffic
 (the routing must fail over); cut Redis (the &lt;em&gt;fail-closed&lt;/em&gt; mode must answer 503,
 not let requests through); preempt a borrowed job in the middle of writing a
