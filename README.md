@@ -11,7 +11,8 @@ Published at <https://go-llmflow.github.io/docs/>:
 - **Audit and logging**: the anchored audit log, request logs, policies.
 - **PII recognisers** (`pii` v0.1.0): the kinds recognised, their checksums, the
   measured false positives.
-- **Gateway** (v0.6.0): HCL2 configuration, hierarchy and roles, admin API,
+- **Coding agents**: Continue, the stateless Responses API, the Anthropic Messages API.
+- **Gateway** (v0.7.0): HCL2 configuration, hierarchy and roles, admin API,
   fair-share with borrowing, prefix-cache isolation, overhead A/B against LiteLLM,
   guardrails, limitations, roadmap.
 - **Guide: fair-share on a co-owned GPU cluster**: Slurm, vLLM, the gateway, VS Code
