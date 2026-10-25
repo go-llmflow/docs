@@ -13,7 +13,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.6.0.** The versions so far:
+**The current release is v0.7.0.** The versions so far:
 
 | Version | Content |
 | --- | --- |
@@ -23,6 +23,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.4.0](https://github.com/go-llmflow/gateway/releases/tag/v0.4.0) | **identity and access (roadmap milestone M2)**, built on [go-authn](https://github.com/go-authn): OpenID Connect tokens on the inference API (`jwt`), administrator single sign-on (`sso`), SAML federations through a bridge, SCIM provisioning (`scim`), key rotation (`key_rotation`), trusted proxies, IP allowlists, route restrictions, secrets from OpenBao or Vault. See [Identity]({{< relref "identity.md" >}}) |
 | [v0.5.0](https://github.com/go-llmflow/gateway/releases/tag/v0.5.0) | **audit and logging (roadmap milestone M3)**: a hash-chained admin audit log with signed Ed25519 checkpoints and external anchors, per-team request logs (content off by default), retention, request policies, retried alerts. See [Audit and logging]({{< relref "audit.md" >}}) |
 | [v0.6.0](https://github.com/go-llmflow/gateway/releases/tag/v0.6.0) | **guardrails (roadmap milestone M4)**: checks on prompts and completions, `hide_secrets`, `pii` (built on [go-llmflow/pii]({{< relref "pii.md" >}})), Llama Guard and Prompt Guard; the HTTP adapter is off by default. See "Guardrails" in the repository's README |
+| [v0.7.0](https://github.com/go-llmflow/gateway/releases/tag/v0.7.0) | **more endpoints (issue #38)**: stateless `/v1/responses`, the Anthropic `/v1/messages`, rerank, tokenization, audio transcription, model fallbacks, OpenTelemetry traces. See [More endpoints](#more-endpoints) and [Coding agents]({{< relref "agents.md" >}}) |
 
 ```sh
 go install github.com/go-llmflow/gateway/cmd/llmflow-gateway@latest
@@ -95,10 +96,14 @@ restrict which model groups they may use.
 
 ### Routes {#routes}
 
-Client routes: `POST /v1/chat/completions`, `POST /v1/completions`,
-`POST /v1/embeddings`, `GET /v1/models`. Also `GET /healthz`, which returns 503
-when the budget state is stale and fail-closed is on, and `GET /metrics`
-(Prometheus text format, optional bearer token). `/v1/responses` is not proxied.
+Client routes: `POST /v1/chat/completions`, `/v1/completions`,
+`/v1/embeddings`, `/v1/responses` (stateless only), `/v1/messages` (Anthropic
+Messages API), `/v1/rerank`, `/v2/rerank`, `/v1/audio/transcriptions`,
+`/tokenize`, `/detokenize`, and `GET /v1/models`. Also `GET /healthz`, which
+returns 503 when the budget state is stale and fail-closed is on, and
+`GET /metrics` (Prometheus text format, optional bearer token). All are
+described under [More endpoints](#more-endpoints); how coding agents use them is
+on the [Coding agents]({{< relref "agents.md" >}}) page.
 
 ### Admin API {#admin-api}
 
@@ -133,7 +138,7 @@ webhook and/or by e-mail through an SMTP relay.
 The configuration is written in
 [HCL2 native syntax](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md);
 the repository's `examples/gateway.hcl` is parsed by its test suite, so it stays
-valid. This extract was run through `llmflow-gateway check-config` v0.6.0 (with
+valid. This extract was run through `llmflow-gateway check-config` v0.7.0 (with
 the key files present):
 
 ```hcl
@@ -214,6 +219,115 @@ Design decisions of the format:
 Cost of a request, in GPU-hours:
 `((prompt - cached) x input + cached x cached_price + completion x output) / 10^6`,
 from the `usage` vLLM reports.
+
+## More endpoints {#more-endpoints}
+
+All of these go through the same pipeline as chat: authentication, policies,
+budgets, rate limits, guardrails, fair-share priority and the tenant's
+`cache_salt`.
+
+### Responses API: stateless only {#responses}
+
+`POST /v1/responses` is proxied to vLLM's own Responses endpoint. The gateway
+**forces `"store": false`** and refuses `previous_response_id`, `background`,
+`conversation` and a stored `prompt` with a 400 that says so. `GET /v1/responses/{id}`
+and the cancel route are not routed. Clients send the whole conversation in
+`input`, as with chat completions.
+
+**Why.** vLLM keeps every response in the memory of the instance that produced it
+(`store` defaults to true there). Anyone holding the id can read it back, continue
+it or cancel it. Behind a gateway that state would be shared by every tenant and
+would live on one upstream among several, so **a tenant holding an id could read or
+continue another tenant's conversation**.
+
+Usage is read from the Responses usage, including the final `response.completed`
+event of a stream. Guardrails read `instructions` and the `input` items; input
+items they cannot read are refused. A streamed Responses request under
+**post-call** guardrails is refused (400; ask with `"stream": false`).
+
+### Anthropic Messages API {#messages}
+
+`POST /v1/messages` is proxied to **vLLM's own Anthropic endpoint**, with no
+translation in the gateway, so coding agents that speak the Messages API can use
+local models. A virtual key is the bearer token. Guardrails cover `system`, text
+and `thinking` blocks, `tool_result` content and every string inside `tool_use`
+inputs; blocks they cannot read (a `document`) are refused. Guarded streams pass
+through an **Anthropic event filter**. Errors carry both OpenAI's `{"error": ...}`
+and Anthropic's top-level `"type": "error"`. `/v1/messages/count_tokens` is not
+routed.
+
+### Rerank, tokenization, audio {#rerank}
+
+- `POST /v1/rerank` and `/v2/rerank` serve score models; they are guarded and
+  charged on the usage's prompt tokens.
+- `POST /tokenize` and `/detokenize` are authenticated and rate limited but
+  **not charged and not guarded**: no model runs, and masking would make the count
+  wrong.
+- `POST /v1/audio/transcriptions` takes a bounded multipart form, rebuilt from an
+  allow-list of fields before it is forwarded. The file is limited by
+  `limits { max_audio_bytes }` (25 MiB by default), and a model is charged with
+  `cost { audio_per_hour }` in GPU-hours per hour of audio. The audio itself is not
+  inspected, and the content log never holds it.
+- A client `chat_template` is stripped from every request.
+
+### Fallbacks {#fallbacks}
+
+A model group can name fallbacks, tried in order (at most 4, not a guard model, not
+itself):
+
+```hcl
+model "llama-70b" {
+  pool      = "b300"
+  fallbacks = ["llama-8b"]
+  # ...
+}
+```
+
+Before anything has reached the client, a request moves to the next fallback when
+no upstream of the group took it, or when vLLM answered 429 or 503. The target must
+be in the team's model list and within its budgets. The request acquires in the
+**target's pool** (so it gets its organisation's priority there), is rewritten for
+the target, and is **charged and recorded under the model that served it**. The
+response carries `X-Llmflow-Model`, and `llmflow_fallbacks_total{from,to}` counts
+the moves. Any other answer, a 400 for instance, is final.
+
+### Traces {#traces}
+
+A `tracing` block exports OpenTelemetry traces over OTLP/HTTP or gRPC. The W3C
+`traceparent` of the upstream span is sent to vLLM, so vLLM's own spans join the
+trace. A client's trace context is **restarted** unless `trust_client_context =
+true`. Spans carry metadata only (organisation, team, key id, model, pool, priority,
+status, token counts, guardrail verdicts), **never a prompt or an answer**.
+
+This block, with the fallbacks and audio settings above, passes
+`llmflow-gateway check-config` v0.7.0 (with the key files present, and
+organisations, pools and models around it):
+
+```hcl
+limits {
+  max_audio_bytes = 26214400
+}
+
+tracing {
+  endpoint             = "https://otel.example.org:4318"
+  protocol             = "http"
+  sample_ratio         = 0.1
+  token_file           = "/etc/llmflow/otel.token"
+  insecure             = false
+  trust_client_context = false
+}
+
+model "whisper" {
+  upstream_model = "openai/whisper-large-v3"
+  pool           = "small"
+  class          = "interactive"
+  key_file       = "/etc/llmflow/vllm.key"
+  cost {
+    audio_per_hour = 0.05
+  }
+  upstream "gpu06" { base_url = "http://gpu06.internal:8000" }
+}
+```
 
 ## How fair-share with borrowing works {#fair-share-with-borrowing}
 
@@ -376,7 +490,7 @@ PostgreSQL. The estimate undercounts tool-call and reasoning tokens.
 
 ## Limitations {#limitations}
 
-Open defects of v0.6.0, as the repository lists them:
+Open defects of v0.7.0, as the repository lists them:
 
 1. **State is per process.** In-flight counts, rate limits and the key cache live
    in memory: run **one gateway replica per pool**. Several replicas would each
@@ -394,7 +508,8 @@ Open defects of v0.6.0, as the repository lists them:
    twice (both are counted in metrics); budgets count the cost until the next
    refresh only.
 7. **No TLS** in the gateway: put it behind a TLS proxy. The **admin API shares
-   the client listener**. `/v1/responses` is not proxied.
+   the client listener**. `/v1/responses` is served
+   statelessly only (see [above](#responses)).
 8. **`C` is static configuration**; the gateway does not measure or adapt it.
 9. **Admin principals are read from the store on every admin request**, with no
    cache: role changes apply at once, but the admin API fails with the store.
@@ -417,6 +532,20 @@ Open defects of v0.6.0, as the repository lists them:
     OpenBao or Vault, verify with a public key kept elsewhere, and keep an anchor
     on write-once storage. See the
     [threat model]({{< relref "audit.md" >}}#threat-model).
+15. **What guardrails do not inspect.** Streamed tool-call arguments cannot be
+    masked, so a guarded stream that carries them is stopped (ask without
+    `stream`). Reasoning text, refusals, log probabilities and unknown fields are
+    removed from guarded answers, not inspected. A secret whose start appears more
+    than 256 bytes before it can match is not seen in a stream, and a span still
+    open after 64 KiB is released masked only as far as it has reached. Guardrail
+    audit entries are written asynchronously and dropped, counted and alerted when
+    the queue is full. **A Responses stream under post-call guardrails is
+    refused.**
+16. **Phone numbers have no checksum**: a PII guardrail that masks them also masks
+    10-digit references that start with 0.
+17. **The performance of v0.6 and v0.7 is not measured yet.** The
+    [overhead figures](#overhead) are those of v0.1.0; an independent benchmark of
+    the current release is waiting for a quiet machine.
 
 ## Roadmap {#roadmap}
 
@@ -426,6 +555,11 @@ multi-tenancy) is done**, in v0.2.0, **M2 (identity and access)** in v0.4.0, and
 **M3 (audit and logging)** in v0.5.0, and **M4 (guardrails)** in v0.6.0. The
 version numbers written in the issue shifted by one when v0.3.0 was taken by the
 security patch.
+
+A further milestone, [issue #38](https://github.com/go-llmflow/gateway/issues/38)
+("M5"), covers more endpoints and operations; its first five items shipped in v0.7.0 (the
+endpoints, fallbacks and tracing described above).
+**v0.8.0 is planned for the admin UI and MCP.**
 
 ## License {#license}
 
