@@ -13,7 +13,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.8.0.** The versions so far:
+**The current release is v0.9.0.** The versions so far:
 
 | Version | Content |
 | --- | --- |
@@ -25,6 +25,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.6.0](https://github.com/go-llmflow/gateway/releases/tag/v0.6.0) | **guardrails (roadmap milestone M4)**: checks on prompts and completions, `hide_secrets`, `pii` (built on [go-llmflow/pii]({{< relref "pii.md" >}})), Llama Guard and Prompt Guard; the HTTP adapter is off by default. See "Guardrails" in the repository's README |
 | [v0.7.0](https://github.com/go-llmflow/gateway/releases/tag/v0.7.0) | **more endpoints (issue #38)**: stateless `/v1/responses`, the Anthropic `/v1/messages`, rerank, tokenization, audio transcription, model fallbacks, OpenTelemetry traces. See [More endpoints](#more-endpoints) and [Coding agents]({{< relref "agents.md" >}}) |
 | [v0.8.0](https://github.com/go-llmflow/gateway/releases/tag/v0.8.0) | **admin web UI and MCP gateway (issue #38, items 6 and 7)**. See [Admin web UI](#admin-ui) and [MCP gateway](#mcp) |
+| [v0.9.0](https://github.com/go-llmflow/gateway/releases/tag/v0.9.0) | **security audit and chaos release** (2026-10-26): findings A1 to A9 fixed, among them a high one (A3). See [Security]({{< relref "security.md" >}}) |
 
 ```sh
 go install github.com/go-llmflow/gateway/cmd/llmflow-gateway@latest
@@ -139,7 +140,7 @@ webhook and/or by e-mail through an SMTP relay.
 The configuration is written in
 [HCL2 native syntax](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md);
 the repository's `examples/gateway.hcl` is parsed by its test suite, so it stays
-valid. This extract was run through `llmflow-gateway check-config` v0.8.0 (with
+valid. This extract was run through `llmflow-gateway check-config` v0.9.0 (with
 the key files present):
 
 ```hcl
@@ -307,7 +308,7 @@ true`. Spans carry metadata only (organisation, team, key id, model, pool, prior
 status, token counts, guardrail verdicts), **never a prompt or an answer**.
 
 This block, with the fallbacks and audio settings above, passes
-`llmflow-gateway check-config` v0.8.0 (with the key files present, and
+`llmflow-gateway check-config` v0.9.0 (with the key files present, and
 organisations, pools and models around it):
 
 ```hcl
@@ -374,7 +375,7 @@ check use `llmflow-gateway audit verify` with a public key kept elsewhere (see
 server in front of the tool servers of the configuration. It speaks the Streamable
 HTTP binding of revision **2026-07-28** and, for older clients, the initialize
 handshake of **2025-11-25** (and 2025-06-18, 2025-03-26). A client authenticates
-with its virtual key. This block passes `llmflow-gateway check-config` v0.8.0
+with its virtual key. This block passes `llmflow-gateway check-config` v0.9.0
 (with the key files present, and an `sso` block, organisations, a pool and a model
 around it):
 
@@ -568,8 +569,9 @@ users of the same institution can still probe each other by timing; `team` or
 ### Security audit of 2026-10-26 {#audit-2026-10-26}
 
 A security audit and a chaos run of v0.8.0 were made on 2026-10-26. The fixes
-below are merged on `main` **after the v0.8.0 tag**, so they are not in a release
-yet (the latest tag is v0.8.0); each has a test that fails without the fix.
+below are released in **v0.9.0**; each has a test that fails without the fix. The
+full account (method, findings A1 to A9, chaos results, residual risks) is on the
+[Security]({{< relref "security.md" >}}) page.
 
 - **A1, multimodal `uuid`s on every route (medium).** They were scoped per tenant
   on chat completions and Responses only. On `/v1/rerank`, `/v2/rerank`,
@@ -608,7 +610,7 @@ PostgreSQL. The estimate undercounts tool-call and reasoning tokens.
 
 ## Limitations {#limitations}
 
-Open defects of v0.8.0, as the repository lists them:
+Open defects of v0.9.0 (re-checked in the audit of 2026-10-26), as the repository lists them:
 
 1. **State is per process.** In-flight counts, rate limits and the key cache live
    in memory: run **one gateway replica per pool**. Several replicas would each
