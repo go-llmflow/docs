@@ -241,7 +241,7 @@ that on, anyone holding an id could read a response back, continue it or cancel 
 and behind a gateway that state would be shared by every tenant. The gateway forces
 `store: false` and refuses the stateful fields **regardless**, so a deployment with
 the store enabled stays safe. Verified against a real vLLM (see
-[below](#verified-vllm)): `GET /v1/responses/{id}` through the gateway answers 404.
+[Benchmarking]({{< relref "benchmarking.md" >}}#verified-vllm)): `GET /v1/responses/{id}` through the gateway answers 404.
 
 Usage is read from the Responses usage, including the final `response.completed`
 event of a stream. Guardrails read `instructions` and the `input` items; input
