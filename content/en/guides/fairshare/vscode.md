@@ -49,6 +49,26 @@ models:
   key, or it will eat the institution's quota.
 - `contextLength` must not exceed the vLLM instance's `--max-model-len`.
 
+## Code assistant: Claude Code {#claude-code}
+
+Claude Code can also talk to the gateway, through `ANTHROPIC_BASE_URL`, with the
+virtual key as the credential. The full, sourced instructions are on the
+[Coding agents]({{< relref "agents.md" >}}#claude-code) page; the short version:
+
+- **Models.** Anthropic does not support routing Claude Code to non-Claude models
+  through any gateway, so Claude Code against the local vLLM models of this cluster is
+  possible but **unsupported by Anthropic**. The supported path is Claude models through
+  the gateway's upcoming `anthropic` provider (gateway v0.12.0, in progress), billed to
+  the organisation's API account. Pooling Pro or Max subscriptions is not allowed.
+- **Credential.** Use `apiKeyHelper` in `~/.claude/settings.json`, a command that prints
+  the key from a file of mode 0600. Never put the key in the project's committed
+  `.claude/settings.json`.
+- **VS Code.** The extension takes its gateway variables from
+  `claudeCode.environmentVariables` in VS Code's user settings.
+- **Project.** From gateway v0.13.0 (in progress), a project can be named with an
+  `X-Llmflow-Project` header, set in the repository's `.claude/settings.json` as
+  `ANTHROPIC_CUSTOM_HEADERS`, or with `requestOptions.headers` in Continue.
+
 ## Development and jobs: Remote-SSH {#remote-ssh}
 
 Remote-SSH reads the user's `~/.ssh/config` [18]. Target the **login node**, never
