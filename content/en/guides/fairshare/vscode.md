@@ -12,7 +12,8 @@ Two uses, two paths: the **code assistant** talks to the gateway over HTTPS;
 
 Continue accepts any OpenAI-compatible provider, LiteLLM and vLLM included:
 `provider: openai` with a custom `apiBase` [16]. The configuration file
-(`~/.continue/config.yaml` by default) requires the fields `name`, `version` and
+(`~/.continue/config.yaml` on macOS and Linux, `%USERPROFILE%\.continue\config.yaml`
+on Windows; [Continue configuration](https://docs.continue.dev/customize/deep-dives/configuration)) requires the fields `name`, `version` and
 `schema`. Each model declares `roles` among `chat`, `autocomplete`, `embed`,
 `rerank`, `edit`, `apply` and `summarize` [17].
 
@@ -71,14 +72,17 @@ Host b300-login
 ```json
 // settings.json (VS Code, user)
 {
-  "remote.SSH.remotePlatform": { "b300-login": "linux" },
-  "remote.SSH.remoteServerListenOnSocket": true
+  "remote.SSH.remotePlatform": { "b300-login": "linux" }
 }
 ```
 
-`remote.SSH.remotePlatform` fixes the host type [18]. The login node is shared by
-many users: the documentation then recommends enabling *Remote Server Listen On
-Socket* for security [18].
+`remote.SSH.remotePlatform` maps a host to its platform [18]. The login node is
+shared by many users, so also enable **Remote.SSH: Remote Server Listen On
+Socket** in the Settings UI (the page cited names it only by that label). The
+VS Code server then listens on a Unix socket locked to the user instead of a
+forwarded TCP port. This needs a Linux or macOS host, disables connection
+multiplexing, and makes public-key authentication recommended
+([Remote Development troubleshooting](https://code.visualstudio.com/docs/remote/troubleshooting)).
 
 {{< callout type="warning" >}}
 The VS Code server consumes CPU and memory on the login node. Set per-user limits
