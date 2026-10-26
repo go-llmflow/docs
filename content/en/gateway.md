@@ -13,7 +13,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.13.0.** The versions so far:
+**The current release is v0.15.1.** The versions so far:
 
 | Version | Content |
 | --- | --- |
@@ -30,6 +30,18 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.11.0](https://github.com/go-llmflow/gateway/releases/tag/v0.11.0) | **fallback on saturation (#58)**: `fallback_on` and `saturation_waiting`. **Breaking for dashboards:** `llmflow_fallbacks_total` has a `reason` label. See [Fallbacks](#fallbacks) |
 | [v0.12.0](https://github.com/go-llmflow/gateway/releases/tag/v0.12.0) | **Anthropic as an opt-in upstream, and cost units**: see [Anthropic as an upstream](#anthropic) and [Cost units](#cost-units). A **PostgreSQL migration** (a `unit` column) runs at start-up. `x-api-key` is accepted as a credential |
 | [v0.13.0](https://github.com/go-llmflow/gateway/releases/tag/v0.13.0) | **finance reports**: [project attribution](#attribution) by header, the `lab` and `user` dimensions, the `/ui/reports` page, exports (CSV, XLSX, PDF) and reconciliation with Slurm's `sreport`. See [Finance reports]({{< relref "finance-reports.md" >}}). Existing configurations stay valid |
+| [v0.12.1](https://github.com/go-llmflow/gateway/releases/tag/v0.12.1) | **`/v1/messages/count_tokens`** is routed: exact counts for vLLM models, the organisation's key for Anthropic. See [Anthropic Messages API](#messages) |
+| [v0.13.1](https://github.com/go-llmflow/gateway/releases/tag/v0.13.1) | CLI export bounds (`--max-days`, `--max-rows`, `--timeout`, audited). **Published after v0.14.0, on a commit that already holds the HA code: see the note below** |
+| [v0.14.0](https://github.com/go-llmflow/gateway/releases/tag/v0.14.0) | **high availability**: an optional `ha` block, several replicas sharing the pools through PostgreSQL. See [High availability](#ha). Off by default |
+| [v0.14.1](https://github.com/go-llmflow/gateway/releases/tag/v0.14.1) | the same commit as v0.13.1 |
+| [v0.15.0](https://github.com/go-llmflow/gateway/releases/tag/v0.15.0) | **Slurm discovery**: a `slurm` block inside a `model` follows vLLM jobs on Slurm (elastic pools). See [Slurm discovery](#slurm-discovery) |
+| [v0.15.1](https://github.com/go-llmflow/gateway/releases/tag/v0.15.1) | the report charts (pies, bars and series) all drawn by go-plot v0.3.0 with plain-text labels; the gateway's own SVG chart engine is removed |
+
+**Which tag to take.** v0.13.1 was published **after** v0.14.0, and on a commit that
+already contains the HA code of v0.14.0 (it descends from it); v0.14.1 is the very same
+commit. A tag number going down in time is therefore not a downgrade here. Take
+**v0.14.1 or later** (today v0.15.1), not v0.13.1, so that your version number says
+what the binary holds. The HA code does nothing without an `ha` block.
 
 ```sh
 go install github.com/go-llmflow/gateway/cmd/llmflow-gateway@latest
@@ -171,7 +183,7 @@ webhook and/or by e-mail through an SMTP relay.
 The configuration is written in
 [HCL2 native syntax](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md);
 the repository's `examples/gateway.hcl` is parsed by its test suite, so it stays
-valid. This extract was run through `llmflow-gateway check-config` v0.13.0 (with
+valid. This extract was run through `llmflow-gateway check-config` v0.15.1 (with
 the key files present):
 
 ```hcl
@@ -288,8 +300,15 @@ local models. A virtual key is the bearer token. Guardrails cover `system`, text
 and `thinking` blocks, `tool_result` content and every string inside `tool_use`
 inputs; blocks they cannot read (a `document`) are refused. Guarded streams pass
 through an **Anthropic event filter**. Errors carry both OpenAI's `{"error": ...}`
-and Anthropic's top-level `"type": "error"`. `/v1/messages/count_tokens` is not
-routed.
+and Anthropic's top-level `"type": "error"`.
+
+**`/v1/messages/count_tokens`** (since v0.12.1) goes to vLLM's own endpoint, which
+renders the chat template and counts the prompt's tokens, so the count is **exact**
+(`{"input_tokens": N}`). Claude Code calls it, and falls back to a character-based
+estimate without it. It is authenticated, allow-listed and rate limited like
+`/tokenize`; it is **not charged and not guarded**. `cache_salt` and the engine fields
+are stripped, and `chat_template_kwargs` is kept, so the count matches the
+`/v1/messages` request that carries the same fields.
 
 ### Rerank, tokenization, audio {#rerank}
 
@@ -368,7 +387,7 @@ capability and never forwards a client's `Authorization` or `x-api-key`. This is
 legal advice: check your institution's contracts with your DPO.
 
 This block, from the gateway's `examples/anthropic.hcl` with this page's names, passes
-`llmflow-gateway check-config` v0.13.0 (with the key files present, and the
+`llmflow-gateway check-config` v0.15.1 (with the key files present, and the
 organisations, the `b300` pool and the local `llama-3.3-70b` model of that example
 around it):
 
@@ -431,10 +450,19 @@ price list and put its date in `price_date`.) What `check-config` enforces:
 **Routes.** `/v1/messages` only, JSON and streaming. `/v1/chat/completions` and the
 other routes answer **400** for an Anthropic model, because Anthropic's
 OpenAI-compatibility layer "is not considered a long-term or production-ready
-solution". `/v1/messages/count_tokens` is **not routed yet** (a patch is in
-progress): Claude Code then estimates the counts. A client may authenticate with
+solution". A client may authenticate with
 `Authorization: Bearer llmf-...` **or `x-api-key: llmf-...`**, as Anthropic SDKs and
 Claude Code do.
+
+**`/v1/messages/count_tokens`** (since v0.12.1) is sent to Anthropic's endpoint with the
+organisation's key and the same filtered headers. It is **not charged**: Anthropic says
+token counting "is free to use". It is rate limited per key like every route. The
+pre-call `pii` and `hide_secrets` guardrails **still mask the prompt**, because a count
+also sends it off the site, and the count is then that of the prompt `/v1/messages`
+really sends. Anthropic rate-limits counting separately from message creation, so a 429
+on a count is passed through **without starting the organisation's messages back-off**,
+and a messages back-off does not stop the counts. A shared workspace refuses both, and
+an organisation that is not allowed gets **404**.
 
 **What reaches Anthropic.** Headers are rebuilt: `x-api-key` is the organisation's
 key; `anthropic-version` is the client's if allow-listed; `anthropic-beta` carries the
@@ -492,7 +520,7 @@ org "etabA" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.13.0 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.15.1 (with the key files present,
 and a pool and a model around it).
 
 - **What the header may name.** A project **name**, looked up in the key's own team
@@ -528,7 +556,7 @@ true`. Spans carry metadata only (organisation, team, key id, model, pool, prior
 status, token counts, guardrail verdicts), **never a prompt or an answer**.
 
 This block, with the fallbacks and audio settings above, passes
-`llmflow-gateway check-config` v0.13.0 (with the key files present, and
+`llmflow-gateway check-config` v0.15.1 (with the key files present, and
 organisations, pools and models around it):
 
 ```hcl
@@ -556,6 +584,208 @@ model "whisper" {
   upstream "gpu06" { base_url = "http://gpu06.internal:8000" }
 }
 ```
+
+## High availability: several replicas (since v0.14.0) {#ha}
+
+Without an `ha` block nothing changes: one replica, the fair-share state in its memory.
+With one, several replicas share the pools and **PostgreSQL stays the only shared
+component** (no etcd, no Redis). Design discussion:
+[issue #74](https://github.com/go-llmflow/gateway/issues/74).
+
+```hcl
+store {
+  kind      = "postgres"          # required by ha
+  dsn_file  = "/run/secrets/dsn"
+  spool_dir = "/var/spool/llmflow"
+}
+ha {
+  replica_id           = "gw-1"             # optional, default the host name
+  listen               = "10.0.0.5:9444"    # internal port, replicas only
+  advertise            = "10.0.0.5:9444"    # default: listen (an IP literal)
+  peer_networks        = ["10.0.0.0/24"]    # owners are dialled only there
+  secret_file          = "/run/secrets/ha"  # shared, at least 32 bytes
+  lease_ttl            = "6s"               # renewed every third
+  heartbeat            = "1s"               # grant reports to owners
+  forward_timeout      = "250ms"
+  usage_persist        = "10s"
+  on_owner_unreachable = "lowest_priority"  # or "reject" (503)
+}
+```
+
+This block passes `llmflow-gateway check-config` v0.15.1 (with the key, DSN and secret
+files present, and organisations, a pool and a model around it). `check-config` also
+checks the block: the postgres store, an advertised IP literal inside `peer_networks`,
+`heartbeat` at most a third of `lease_ttl`, `forward_timeout` at most a heartbeat, and a
+secret of at least 32 bytes.
+
+- **One owner per pool.** Each pool's fair share (in-flight counts, reservations, decayed
+  usage) is decided by one replica at a time: the holder of the pool's **lease row in
+  PostgreSQL**. The lease's `epoch` is a **fencing token** that grows at every change
+  of owner. Expiry is computed with PostgreSQL's clock, never a replica's, and a takeover
+  is one conditional statement, so of several replicas racing on an expired lease exactly
+  one wins.
+- **No split brain.** The owner decides only until the monotonic time at which its last
+  successful renewal *started*, plus 0.9 x `lease_ttl`; PostgreSQL cannot hand the lease
+  to anyone before that renewal expires. An owner cut from PostgreSQL therefore stops
+  deciding before another replica can start. Its usage writes are fenced at the storage,
+  and a replica that has seen a newer epoch refuses an older owner's answer.
+- **Forwarding the decision, not the request.** The other replicas send *acquire* and
+  *release* to the owner over the internal port, and still send the request to vLLM
+  themselves: one small round trip per admission (the release is asynchronous), and the
+  streamed answer does not cross a second gateway. Every message is signed with
+  HMAC-SHA256 (key derived from `secret_file`), bound to the sender's instance, a sequence
+  number and a timestamp (5 minutes of clock difference accepted); replays are refused with
+  a sliding window per instance (RFC 4303, 3.4.3). The owner's address is read from the
+  database and dialled **only inside `peer_networks`**, without redirects, with
+  `forward_timeout`.
+- **Failover.** Every replica reports its live grants to the owner each `heartbeat`. A new
+  owner (epoch + 1) restores the decayed usage the previous one persisted every
+  `usage_persist`, adopts the grants the surviving replicas report, and counts the
+  previous owner's last persisted in-flight requests as **phantoms**: a safety margin that
+  expires after `limits.max_request_duration` and shrinks as reports account for them.
+- **Without a reachable owner** (the seconds of a failover) a request is admitted at the
+  **lowest borrowing priority**, which cannot take anyone's reservation, or refused with
+  503 under `on_owner_unreachable = "reject"`. Such a request cannot move to a fallback on
+  saturation, because the pool's room is unknown.
+- **Also shared through PostgreSQL.** SSO logins and sessions (the row key is the SHA-256
+  of the cookie, the content sealed with AES-256-GCM under a key derived from
+  `secret_file`); soft-budget alerts, through an outbox table, delivered at least once
+  with the same `Idempotency-Key`; key revocations, broadcast with `NOTIFY` and `LISTEN`
+  so every replica drops its cached identities at once.
+- **Metrics.** `llmflow_ha_owner`, `llmflow_ha_epoch`, `llmflow_ha_local_grants` (per
+  pool), `llmflow_ha_unowned_total`, `llmflow_inflight_phantoms` (per pool and
+  organisation) and `llmflow_ha_revocations_total`. The fair-share gauges are published by
+  the owner only.
+
+**Chaos tests** (real PostgreSQL 18, 2026-10-26, from the repository's README):
+
+| Fault | Result |
+| --- | --- |
+| Owner killed with SIGKILL mid-traffic (`lease_ttl` 1.5 s) | survivor owner after **1.3 s**, epoch 1 to 2; 207 requests served meanwhile, **0 failed** (203 of them at the lowest priority before the takeover) |
+| Owner partitioned from PostgreSQL (`lease_ttl` 900 ms) | the old owner stops deciding 804 ms after the cut, the other replica owns from 904 ms; **0 of 805 samples with two owners**; it does not take the lease back after the heal |
+| Two replicas racing for a lease (8 claimants x 20 rounds) | exactly one owner each time |
+| Clock skew of +/- 2 minutes on one replica | ownership does not move, forwarding works |
+| A key revoked on one replica while cached on the other (`key_cache_ttl` 1 h) | refused on the other replica after **3 ms** |
+| SSO login started on replica A, callback on B, B killed, session used on C | the session is served by C; the state cannot be replayed |
+| The same soft-budget alert queued by two replicas | one delivery |
+| Random partitions, kills and restarts of 4 replicas under traffic, 8 s | never two owners at one epoch, over 14,000 to 27,000 decisions per run |
+
+**Not measured, and open.** The **added latency** of a forwarded admission is not measured
+yet (the machine's load was above the gate's limit); a Go benchmark compares a single
+replica, the owner and a forwarded admission. **Per-key rate limits** (`rpm`, `tpm`,
+`max_inflight`) are still counted **per replica**: N replicas allow up to N times the
+limit. The fencing token is checked by PostgreSQL and by the replicas, not by vLLM, so a
+decision an owner made just before a long pause can still reach vLLM. And the **internal
+channel is authenticated but not encrypted**: keep it on a private network (the
+maintainers say this is being addressed). **An `ha` block cannot be combined with
+[Slurm discovery](#slurm-discovery) yet**; `check-config` refuses the pair.
+
+## Slurm discovery: vLLM instances as Slurm jobs (since v0.15.0) {#slurm-discovery}
+
+A model can take its upstreams from **Slurm** instead of, or on top of, static
+`upstream` blocks. This is the `slurm` block **inside a `model` block**; the top-level
+`slurm` block of [Finance reports]({{< relref "finance-reports.md" >}}#slurm) is a
+different thing (the input of the reconciliation). The vLLM instances run as long jobs of
+a service account, for example account `svc_llm` with a QOS `service`, and can be stopped
+at night so that the GPUs can be lent to a borrowing QOS. The gateway **follows** the
+running jobs; it never starts or stops one. Slurm (`scrontab`) or the operator does that.
+
+```hcl
+pool "gpu" { capacity = 0 }   # 0: C is the sum of the instances' capacities
+
+model "llama" {
+  upstream_model = "meta/llama-3.3-70b"
+  pool           = "gpu"
+  key_file       = "/etc/llmflow/vllm.key"     # the instances' API key
+  slurm {
+    url         = "https://slurmrestd.cluster:6820"   # from here only
+    api_version = "v0.0.44"                      # slurmrestd -d list
+    token_file  = "/etc/llmflow/slurm.jwt"       # any secret reference
+    user_name   = "svc_llm"                      # X-SLURM-USER-NAME (optional)
+    accounts    = ["svc_llm"]                    # required
+    partitions  = ["gpu"]                        # required
+    users       = ["svc_llm"]                    # optional allow-list
+    interval    = "15s"
+    stale_after = "5m"
+    instance_capacity     = 8                    # when the job does not say
+    max_instance_capacity = 64
+  }
+}
+```
+
+This block passes `llmflow-gateway check-config` v0.15.1 (with the key files present,
+and organisations around it).
+
+- **Convention.** A job serves model `M` on port `P` when its name (or else its comment)
+  is `llmflow:M:P` or `llmflow:M:P:C`. `C` is the instance's contribution to the pool's
+  capacity; without it, `instance_capacity` applies.
+- **Discovery.** Every `interval` the gateway reads `GET <url>/slurm/<api_version>/jobs/`
+  with `X-SLURM-USER-TOKEN`. It keeps the jobs that are `RUNNING` and carry none of the
+  `COMPLETING`, `CONFIGURING`, `STOPPED`, `SIGNALING`, `RESIZING` or `REQUEUED` flags, in
+  an allowed account and partition (and user, when `users` is set). An instance is added
+  only after `GET /health` answers 200 and `GET /v1/models` lists `upstream_model`.
+- **Removal.** When the job leaves the list, or fails health 3 polls in a row, the
+  instance is **drained**: no new request, not even as a last resort. It is removed once
+  its requests in flight have finished, or after `limits.max_request_duration`.
+- **Capacity.** The pool's C is its configured `capacity` plus the capacities of its
+  non-draining instances. Every membership change re-apportions the organisations'
+  integer reservations with the same Hamilton method, and is **audited**
+  (`slurm.member_added`, `slurm.member_drained`, `slurm.member_removed`,
+  `pool.capacity`). Requests in flight keep their status.
+- **Safety.** Only the configured accounts, partitions and users are trusted: without
+  that, anyone could submit a job named `llmflow:llama:8000` and capture prompts. An
+  untrusted job claiming a model is logged once and counted in
+  `llmflow_slurm_rejected_jobs_total{reason}`. The URL comes from the configuration only;
+  `batch_host` must be a plain host name; the JWT is a secret reference and is never sent
+  across a redirect (redirects are refused); the answer is bounded to 32 MiB and 100,000
+  jobs.
+- **Fail-closed.** While slurmrestd cannot be read, the last known members are kept and
+  still health-checked. Past `stale_after` the gateway logs an error and **admits no
+  instance** until a poll succeeds. Healthy members are never dropped because of an outage.
+- **Metrics.** `llmflow_pool_capacity`, `llmflow_slurm_polls_total{outcome}`,
+  `llmflow_slurm_last_success_timestamp_seconds`, `llmflow_slurm_rejected_jobs_total`.
+- **The token is read at start only.** Issue it with `scontrol token username=svc_llm
+  lifespan=...` and pick a lifespan longer than your restart cycle: the default is 1800 s.
+  Once it has expired, polls fail and the fail-closed rule applies. slurmrestd needs
+  `AuthAltTypes=auth/jwt`.
+
+**An instance as a job**, from the README's template (the key is read into
+`VLLM_API_KEY`, never passed with `--api-key`, because the node's process list shows every
+command line to every user):
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=llmflow:llama:8000:8
+#SBATCH --account=svc_llm --qos=service --partition=gpu
+#SBATCH --nodes=1 --gres=gpu:4 --exclusive --time=7-00:00:00
+#SBATCH --signal=B:TERM@120
+VLLM_API_KEY=$(cat /etc/llmflow/vllm.key); export VLLM_API_KEY
+exec vllm serve meta/llama-3.3-70b --served-model-name meta/llama-3.3-70b \
+  --host 0.0.0.0 --port 8000 --tensor-parallel-size 4
+```
+
+The node's vLLM port must be reachable by the gateway only (firewall): `/metrics` is
+unauthenticated and the key protects `/v1` only.
+
+**Day and night with `scrontab`** (needs `ScronParameters=enable`):
+
+```text
+#SCRON --account=svc_llm --qos=service --partition=service -t 0:05:00
+0 7 * * 1-5 sbatch /opt/llmflow/vllm-llama.sbatch
+#SCRON --account=svc_llm --qos=service --partition=service -t 0:05:00
+0 20 * * 1-5 scancel --account=svc_llm --name=llmflow:llama:8000:8
+```
+
+At 20:00 the jobs end, the gateway drains them, its pool shrinks and the reservations
+follow. At 07:00 the new jobs are admitted as soon as vLLM answers.
+
+**Tested against a real Slurm** (bench `TestSlurmDiscoveryE2E`, 2026-10-26, Slurm
+24.11.5, slurmrestd data_parser v0.0.42, arm64, a vLLM CPU job serving Qwen2.5-0.5B):
+admitted 18 s after `sbatch`, a chat request answered 200, removed 2 s after `scancel`;
+a job of another account claiming the model was rejected and never contacted; a vLLM job
+whose engine failed to start stayed `RUNNING` and was never admitted. See
+[Benchmarking]({{< relref "benchmarking.md" >}}#verified-slurm). That is one small
+instance on one node, not a production cluster.
 
 ## Admin web UI {#admin-ui}
 
@@ -596,7 +826,7 @@ check use `llmflow-gateway audit verify` with a public key kept elsewhere (see
 server in front of the tool servers of the configuration. It speaks the Streamable
 HTTP binding of revision **2026-07-28** and, for older clients, the initialize
 handshake of **2025-11-25** (and 2025-06-18, 2025-03-26). A client authenticates
-with its virtual key. This block passes `llmflow-gateway check-config` v0.13.0
+with its virtual key. This block passes `llmflow-gateway check-config` v0.15.1
 (with the key files present, and an `sso` block, organisations, a pool and a model
 around it):
 
@@ -832,11 +1062,19 @@ PostgreSQL. The estimate undercounts tool-call and reasoning tokens.
 
 ## Limitations {#limitations}
 
-Open defects of v0.13.0, as the repository lists them:
+Open defects of v0.15.1, as the repository lists them:
 
-1. **State is per process.** In-flight counts, rate limits and the key cache live
-   in memory: run **one gateway replica per pool**. Several replicas would each
-   grant the full reservation.
+1. **Rate limits and the key cache are per process.** Since v0.14.0 the fair-share
+   state is shared between replicas **with an `ha` block** (see
+   [High availability](#ha)); without one, run **one gateway replica per pool**, since
+   several would each grant the full reservation. Per-key `rpm`, `tpm` and
+   `max_inflight` limits are still counted per replica (N replicas allow up to N times
+   the limit). Without an `ha` block, a revocation reaches another replica's key cache
+   after `key_cache_ttl` (with one, at once by `NOTIFY`). During a failover (up to
+   `lease_ttl`) requests are admitted at the lowest priority without an owner's
+   decision; a new owner's safety margin is the in-flight count persisted up to
+   `usage_persist` earlier; the fencing token is checked by PostgreSQL and by the
+   replicas, not by vLLM. The internal channel is authenticated, not encrypted.
 2. **Budgets lag.** The cost is known when a request ends, so a burst of long
    requests can overspend by what is in flight. Several gateways see each other's
    spend only at their next refresh.
@@ -863,9 +1101,10 @@ Open defects of v0.13.0, as the repository lists them:
     retried on its own, up to 6 attempts with exponential backoff; a 4xx other
     than 408 and 429 is not retried; every webhook attempt carries the same
     `Idempotency-Key`. A gateway stopped mid-retry does not resume: the period is
-    already marked as alerted.
-11. **SSO sessions live in one replica's memory**: behind several replicas, use
-    sticky sessions.
+    already marked as alerted. (With an `ha` block alerts go through an outbox
+    table in PostgreSQL and survive a restart.)
+11. **Without an `ha` block, SSO sessions live in one replica's memory**: behind
+    several replicas, use sticky sessions. With one, they are in PostgreSQL.
 12. **A person holding a JWT cannot be revoked individually**: disable the team,
     change the `map` blocks, or revoke at the identity provider; a token already
     verified stays cached until its `exp` or `key_cache_ttl`.
@@ -897,11 +1136,6 @@ Open defects of v0.13.0, as the repository lists them:
     reaches: 33.8 MB without the exports, 38.0 MB with them (darwin/arm64,
     `CGO_ENABLED=0 -trimpath`). The fix belongs upstream; until then `govulncheck`
     also scans those modules.
-
-Known gaps of the finance reports, from the maintainers' notes for v0.13.0 (they
-are not all in the README of that tag): the bar chart and the daily series are
-still drawn by the gateway's own renderer, not yet by go-plot (only the pie is);
-and the command-line report has a row cap that is being fixed in **v0.13.1**.
 
 ## Roadmap {#roadmap}
 
