@@ -816,13 +816,13 @@ requests are admitted before borrowing ones; when KV memory runs short, borrower
 are preempted first. Without competition an institution takes everything; under
 saturation each gets its share back.&lt;/p&gt;
 &lt;p&gt;This is the policy the &lt;a href="https://go-llmflow.github.io/docs/main/gateway/#fair-share-with-borrowing"&gt;gateway&lt;/a&gt;
-(v0.10.0) implements in its &lt;code&gt;fairshare&lt;/code&gt; package, with the two refinements the
+(v0.11.0) implements in its &lt;code&gt;fairshare&lt;/code&gt; package, with the two refinements the
 simulator forced (the reservation test counts within-share requests, and usage is
 charged at release). It replaces LiteLLM and the relay here: it holds the keys,
 organisations, teams and budgets itself, and the shares belong to the
 &lt;strong&gt;organisations&lt;/strong&gt; (the institutions). For this cluster, its configuration (HCL2,
 not YAML) would be as follows, with the 256-request capacity of the gateway&amp;rsquo;s
-example. This block was run through &lt;code&gt;llmflow-gateway check-config&lt;/code&gt; v0.10.0, with
+example. This block was run through &lt;code&gt;llmflow-gateway check-config&lt;/code&gt; v0.11.0, with
 the key files present:&lt;/p&gt;
 &lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
 &lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-hcl" data-lang="hcl"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;master_key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/master.key&amp;#34;&lt;/span&gt;
@@ -1234,7 +1234,7 @@ data-copied-label="Copied!"
 &lt;a href="#gateway" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Administrators log in through &lt;code&gt;sso&lt;/code&gt;; users of the inference API present the access
 token through &lt;code&gt;jwt&lt;/code&gt;. The &lt;code&gt;groups&lt;/code&gt; the bridge returns are entitlements held to the
 institution that asserted them, so the &lt;code&gt;role&lt;/code&gt; and &lt;code&gt;map&lt;/code&gt; blocks match them. This
-block was run through &lt;code&gt;llmflow-gateway check-config&lt;/code&gt; v0.10.0 (with the key files
+block was run through &lt;code&gt;llmflow-gateway check-config&lt;/code&gt; v0.11.0 (with the key files
 present, and organisations, a pool and a model alongside):&lt;/p&gt;
 &lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
 &lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-hcl" data-lang="hcl"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;master_key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/master.key&amp;#34;&lt;/span&gt;
@@ -1381,7 +1381,7 @@ the cluster, as a model of class &lt;code&gt;guard&lt;/code&gt; that clients can
 see the already-masked text. A guardrail that errs or times out refuses (503) by
 default. The generic &lt;strong&gt;HTTP adapter is off by default&lt;/strong&gt;: it exists only when
 written, and then only with &lt;code&gt;allow_external = true&lt;/code&gt;, because it sends prompts and
-completions out of the site. This block passes &lt;code&gt;check-config&lt;/code&gt; v0.10.0:&lt;/p&gt;
+completions out of the site. This block passes &lt;code&gt;check-config&lt;/code&gt; v0.11.0:&lt;/p&gt;
 &lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
 &lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-hcl" data-lang="hcl"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;guardrail&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;secrets&amp;#34;&lt;/span&gt; {
 &lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;hide_secrets&amp;#34;&lt;/span&gt;
