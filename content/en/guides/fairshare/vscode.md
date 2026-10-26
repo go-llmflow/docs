@@ -58,8 +58,8 @@ virtual key as the credential. The full, sourced instructions are on the
 - **Models.** Anthropic does not support routing Claude Code to non-Claude models
   through any gateway, so Claude Code against the local vLLM models of this cluster is
   possible but **unsupported by Anthropic**. The supported path is Claude models through
-  the gateway's upcoming `anthropic` provider (gateway v0.12.0, in progress), billed to
-  the organisation's API account. Pooling Pro or Max subscriptions is not allowed.
+  the gateway's opt-in `anthropic` provider (gateway v0.12.0), billed to the
+  organisation's API account. Pooling Pro or Max subscriptions is not allowed.
 - **Credential.** Use `apiKeyHelper` in `~/.claude/settings.json`, a command that prints
   the key from a file of mode 0600. Never put the key in the project's committed
   `.claude/settings.json`.
