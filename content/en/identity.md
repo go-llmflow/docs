@@ -182,6 +182,47 @@ go-authn/scim, and the gateway stores what is pushed.
   that KV v2 field, where the client reads it. If the write fails the rotation is
   undone and retried at the next check.
 
+## OIDC verified against real identity providers (2026-10-26) {#verified}
+
+The JWT path (go-authn/oidc), SSO (go-authn/rp) and SCIM had met only test keys.
+The `e2e/oidc` suite of [bench]({{< relref "benchmarking.md" >}}) v0.3.0 runs the
+same checks against two real providers, each behind a counting proxy that stands in
+as the issuer, so every key-set fetch the gateway makes is counted.
+
+- **dex v2.46.1**, the upstream container (the fleet's `claimward/dex` is an
+  unmodified fork 232 commits behind it, and was not used).
+- **go-authn/bridge v0.23.4** in front of a test SAML federation and identity
+  provider written in Go; the provider's metadata, responses and (encrypted)
+  assertions go through `xmlsec1` 1.3.12.
+- **Gateway under test:** v0.8.0, with two organisations, `jwt` and `sso` role
+  mappings and a `scim` group binding.
+
+All checks **pass for both providers**:
+
+| Check | Evidence |
+| --- | --- |
+| (a) a token is accepted and charged to its organisation and team | `llmflow_requests_total` and `/admin/spend` per team |
+| (b) wrong audience; signed by another key; `alg: none`; HS256 keyed with the public key (PEM and DER); expired | 401 with a body identical to a garbage bearer's (an expired token is refused after `exp` plus the 5 s clock skew) |
+| (b) 40 tokens with unknown `kid`s | exactly **1** key-set fetch at the provider |
+| (c) signing-key rotation | the old (unexpired) and the new token both 200, 1 fetch; an SSO login right after works |
+| (d) SSO: code, PKCE S256, state, nonce | `__Host-llmflow-session` cookie (Secure, HttpOnly, SameSite=Lax); role `org_admin` in `/admin/whoami` |
+| (d) replayed callback; callback in another browser; no role binding; logout | 400; 400; 403; logout without the CSRF token 403, with it 200, then the old cookie 401 |
+| (e) an `org_admin` of organisation A against organisation B | 13 admin listings without leaks; 6 writes on B answer 403 (control: the same write on A answers 200); 7 UI pages without B |
+| (f) SCIM user and group to role | `team_admin` visible in `/admin/users/.../roles` and in the person's session |
+
+**Findings, still open when this was written:**
+
+- [gateway #60](https://github.com/go-llmflow/gateway/issues/60): SSO's ID-token key
+  set refreshes at most once a minute (a fixed default), so a provider rotation right
+  after start-up refuses logins; observed with dex rotating every 30 s.
+- [gateway #61](https://github.com/go-llmflow/gateway/issues/61): the README says
+  keys are fetched over https only, but http to a **loopback** issuer is accepted
+  (on purpose, for tests). Treat "https only" above as "https, except loopback".
+- [go-authn/bridge #79](https://github.com/go-authn/bridge/issues/79): the
+  signing-key rotation procedure is not documented in the bridge's README; the one
+  the test used (`authn-bridge keygen`, `retired_signing_key_files`, then a restart)
+  works.
+
 ## Networks, proxies and secrets {#networks}
 
 - `trusted_proxies` lists the reverse proxies whose `X-Forwarded-For` is believed;

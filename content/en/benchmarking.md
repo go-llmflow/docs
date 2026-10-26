@@ -11,7 +11,11 @@ command-line tools, in pure Go, for measuring LLM gateways such as the
 **adds**, and `fakevllm` is the upstream it is measured against.
 [Repository →](https://github.com/go-llmflow/bench)
 
-This page is written from the repository's README at **v0.2.0**. Since v0.1.0,
+This page is written from the repository's README at **v0.2.0**; v0.3.0 adds the
+`fakeupstream` package (the fake vLLM as a Go package, for tests that embed it with
+`httptest`) and the `e2e/oidc` suite, described on the
+[Identity]({{< relref "identity.md" >}}#verified) page. No command or flag of
+`gwbench` or `fakevllm` changed. Since v0.1.0,
 `gwbench` has a `--direct-model` flag (the model name the upstream serves, sent on
 the direct path), `fakevllm` is a cobra command line, and an `e2e/` suite checks
 the gateway against a real vLLM (see

@@ -22,12 +22,12 @@ Everything is **pure Go** (`CGO_ENABLED=0`) and BSD-3-Clause.
 | [Audit and logging]({{< relref "audit.md" >}}) | the hash-chained admin audit log, its anchors and what they do not protect against, per-team request logs, retention, request policies |
 | [Security]({{< relref "security.md" >}}) | the audit and chaos run of 2026-10-26: method, findings A1 to A9 and their fixes, chaos results and residual risks |
 | [PII recognisers]({{< relref "pii.md" >}}) | the `pii` library (v0.1.0): e-mail, phone, IBAN, French NIR, payment cards and IP addresses found in text, checksum-validated, with the false positives measured |
-| [Benchmarking]({{< relref "benchmarking.md" >}}) | the `bench` tools (v0.2.0): how `gwbench` measures the latency a gateway adds (interleaved, paired per round, load-gated, with a planted-delay control), the recording fake vLLM it measures against, and the checks of the gateway against a real vLLM |
+| [Benchmarking]({{< relref "benchmarking.md" >}}) | the `bench` tools (v0.3.0): how `gwbench` measures the latency a gateway adds (interleaved, paired per round, load-gated, with a planted-delay control), the recording fake vLLM it measures against, and the checks of the gateway against a real vLLM |
 | [Fair-share on a co-owned GPU cluster]({{< relref "guides/fairshare/_index.md" >}}) | a guide: how two institutions can share a cluster of GPU servers with Slurm (batch), vLLM (inference) and a gateway (keys, quotas, priorities), reached from VS Code |
 
 ## Status {#status}
 
-The organisation has three repositories with code (the third, [`bench`](https://github.com/go-llmflow/bench), v0.2.0, holds the measuring tools described in [Benchmarking]({{< relref "benchmarking.md" >}})). [`gateway`](https://github.com/go-llmflow/gateway)
+The organisation has three repositories with code (the third, [`bench`](https://github.com/go-llmflow/bench), v0.3.0, holds the measuring tools described in [Benchmarking]({{< relref "benchmarking.md" >}})). [`gateway`](https://github.com/go-llmflow/gateway)
 has its **current release at v0.9.0**: virtual keys, budgets on every scope of an
 organisation, team, project and key hierarchy with delegated roles, HCL2
 configuration, an admin API, fair-share with borrowing, per-tenant prefix-cache
