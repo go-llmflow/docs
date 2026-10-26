@@ -10,7 +10,7 @@ architecture as the gateway's README gives it and links to the pages that hold t
 details; it adds no measurement and no recommendation of its own. What the READMEs do not
 say is marked **open**, not invented.
 
-Written from the README of gateway **v0.16.0** and of bench v0.5.0.
+Written from the README of gateway **v0.16.1** and of bench v0.5.0.
 
 ## The architecture {#architecture}
 
@@ -106,7 +106,7 @@ The `ha` block, off by default. With **Slurm discovery** (works with `ha` since 
 each replica discovers and health-checks on its own, for its own routing, and only the
 owner's view sets the pool's capacity and reservations. This assembled configuration
 (replicas differ by `replica_id`, `listen` and `advertise`) passes
-`llmflow-gateway check-config` v0.16.0 with the key, DSN, secret and token files present:
+`llmflow-gateway check-config` v0.16.1 with the key, DSN, secret and token files present:
 
 ```hcl
 store {
@@ -143,10 +143,16 @@ model "llama" {
 ```
 
 (The same file with the paths of the test machine; master and cache-salt keys omitted
-above.) Mutual TLS on the internal port, `tls_cert_file`, `tls_key_file` and `tls_ca_file`
-(all three or none), is optional since v0.16.0. Read the **check that failed** in
-[High availability]({{< relref "gateway.md" >}}#ha) before relying on it: a PEM file was
-refused by `check-config` v0.16.0 as "more than one line".
+above.)
+
+**Mutual TLS between the replicas** is optional: `tls_cert_file`, `tls_key_file` and
+`tls_ca_file` (all three or none), PEM files or `vault:` references, with
+`tls_server_name` naming the DNS name in each replica's certificate. **Use v0.16.1 or
+later**: v0.16.0 rejected every multi-line PEM file. With v0.16.1, `check-config`
+accepts real PEM files (an EC P-256 CA and a certificate for `llmflow-ha`, tested on
+2026-10-26) and refuses a certificate whose key does not match. The key file must not be
+readable by group or others. Not verified here: a live handshake between two replicas.
+See [High availability]({{< relref "gateway.md" >}}#ha).
 
 - Behaviour in a failover, the chaos results and the open items: [High availability]({{< relref "gateway.md" >}}#ha).
   A killed owner was replaced in 1.3 s with no request failed; a partitioned owner never

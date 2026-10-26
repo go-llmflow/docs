@@ -13,7 +13,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.16.0.** The versions so far:
+**The current release is v0.16.1.** The versions so far:
 
 | Version | Content |
 | --- | --- |
@@ -37,12 +37,13 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.15.0](https://github.com/go-llmflow/gateway/releases/tag/v0.15.0) | **Slurm discovery**: a `slurm` block inside a `model` follows vLLM jobs on Slurm (elastic pools). See [Slurm discovery](#slurm-discovery) |
 | [v0.15.1](https://github.com/go-llmflow/gateway/releases/tag/v0.15.1) | the report charts (pies, bars and series) all drawn by go-plot v0.3.0 with plain-text labels; the gateway's own SVG chart engine is removed |
 | [v0.15.2](https://github.com/go-llmflow/gateway/releases/tag/v0.15.2) | **Slurm discovery works with `ha`** (#83), and go-pdfkit v0.20.0: the binary no longer links a widget toolkit (42,110,114 to 39,790,834 bytes, 5.5 % smaller). Open defect 18 is fixed |
-| [v0.16.0](https://github.com/go-llmflow/gateway/releases/tag/v0.16.0) | **mutual TLS on the internal replica channel** (`tls_cert_file`, `tls_key_file`, `tls_ca_file`, `tls_server_name` in the `ha` block) |
+| [v0.16.0](https://github.com/go-llmflow/gateway/releases/tag/v0.16.0) | **mutual TLS on the internal replica channel** (`tls_cert_file`, `tls_key_file`, `tls_ca_file`, `tls_server_name` in the `ha` block). **It refused every real PEM file: use v0.16.1** |
+| [v0.16.1](https://github.com/go-llmflow/gateway/releases/tag/v0.16.1) | the mutual-TLS files are read as PEM over several lines (file paths or `vault:` references); the key file must not be readable by group or others |
 
 **Which tag to take.** v0.13.1 was published **after** v0.14.0, and on a commit that
 already contains the HA code of v0.14.0 (it descends from it); v0.14.1 is the very same
 commit. A tag number going down in time is therefore not a downgrade here. Take
-**v0.14.1 or later** (today v0.16.0), not v0.13.1, so that your version number says
+**v0.14.1 or later** (today v0.16.1), not v0.13.1, so that your version number says
 what the binary holds. The HA code does nothing without an `ha` block.
 
 ```sh
@@ -185,7 +186,7 @@ webhook and/or by e-mail through an SMTP relay.
 The configuration is written in
 [HCL2 native syntax](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md);
 the repository's `examples/gateway.hcl` is parsed by its test suite, so it stays
-valid. This extract was run through `llmflow-gateway check-config` v0.16.0 (with
+valid. This extract was run through `llmflow-gateway check-config` v0.16.1 (with
 the key files present):
 
 ```hcl
@@ -389,7 +390,7 @@ capability and never forwards a client's `Authorization` or `x-api-key`. This is
 legal advice: check your institution's contracts with your DPO.
 
 This block, from the gateway's `examples/anthropic.hcl` with this page's names, passes
-`llmflow-gateway check-config` v0.16.0 (with the key files present, and the
+`llmflow-gateway check-config` v0.16.1 (with the key files present, and the
 organisations, the `b300` pool and the local `llama-3.3-70b` model of that example
 around it):
 
@@ -522,7 +523,7 @@ org "etabA" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.16.0 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.16.1 (with the key files present,
 and a pool and a model around it).
 
 - **What the header may name.** A project **name**, looked up in the key's own team
@@ -558,7 +559,7 @@ true`. Spans carry metadata only (organisation, team, key id, model, pool, prior
 status, token counts, guardrail verdicts), **never a prompt or an answer**.
 
 This block, with the fallbacks and audio settings above, passes
-`llmflow-gateway check-config` v0.16.0 (with the key files present, and
+`llmflow-gateway check-config` v0.16.1 (with the key files present, and
 organisations, pools and models around it):
 
 ```hcl
@@ -614,32 +615,41 @@ ha {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.16.0 (with the key, DSN and secret
+This block passes `llmflow-gateway check-config` v0.16.1 (with the key, DSN and secret
 files present, and organisations, a pool and a model around it). `check-config` also
 checks the block: the postgres store, an advertised IP literal inside `peer_networks`,
 `heartbeat` at most a third of `lease_ttl`, `forward_timeout` at most a heartbeat, and a
 secret of at least 32 bytes.
 
-The optional mutual-TLS lines go in the same `ha` block. This is the README's example
-(the certificate and key from a vault, which needs a `vault` block that is not shown);
-it was **not** run through `check-config` here:
+The optional **mutual-TLS** lines go in the same `ha` block (since v0.16.0; **use
+v0.16.1 or later**, see below):
 
 ```hcl
 ha {
   # ... as above, then:
-  tls_cert_file   = "vault:secret/llmflow/ha#cert"  # this replica's
-  tls_key_file    = "vault:secret/llmflow/ha#key"
-  tls_ca_file     = "/etc/llmflow/ha-ca.pem"        # signs every replica
-  tls_server_name = "llmflow-ha"                    # the default
+  tls_cert_file   = "/etc/llmflow/ha-cert.pem"  # this replica's certificate (PEM)
+  tls_key_file    = "/etc/llmflow/ha-key.pem"   # its key: one PEM block, mode 0600
+  tls_ca_file     = "/etc/llmflow/ha-ca.pem"    # signs every replica
+  tls_server_name = "llmflow-ha"                # the default; in the certificate's SAN
 }
 ```
 
-**A check that failed.** When I gave `check-config` v0.16.0 a real generated certificate in
-a plain PEM file, it answered `ha tls_cert_file: secret ... holds more than one line`: the
-secret reader accepts one line only, and a PEM has several. So the README's own
-`/etc/llmflow/ha-ca.pem` example may be refused the same way, and the vault form was not
-tried. The maintainers have not confirmed this yet; until they do, check your own files
-with `check-config` before relying on mutual TLS.
+This form is **validated by `check-config` v0.16.1 with real PEM files**: an EC P-256 CA
+and a replica certificate with the DNS name `llmflow-ha`, generated for the test, as
+multi-line PEMs (the key file at mode 0600, which the loader requires). The
+repository's README also shows the certificate and key as `vault:` references, such as
+`vault:secret/llmflow/ha#cert`; the loader accepts both a file path and a `vault:`
+reference, and that form needs a `vault` block which is not shown here and was not run.
+The certificate file may carry intermediates after the leaf, the CA file may bundle
+several CAs, and `check-config` refuses a certificate outside its validity period.
+
+**Use v0.16.1 or later for mutual TLS.** v0.16.0 read these three values with the
+one-line secret reader and **rejected every multi-line PEM file**: `check-config` v0.16.1
+answered `ha tls_cert_file: secret ... holds more than one line` for a real certificate.
+Fixed in v0.16.1 (the PEM-aware loader). What this page has verified is
+`check-config` acceptance of real files; I have **not** seen a live handshake between two
+replicas, and the repository's own tests of refused peers (no certificate, another CA,
+plain HTTP, another server name) are the repository's, not re-run here.
 
 - **One owner per pool.** Each pool's fair share (in-flight counts, reservations, decayed
   usage) is decided by one replica at a time: the holder of the pool's **lease row in
@@ -661,9 +671,9 @@ with `check-config` before relying on mutual TLS.
   a sliding window per instance (RFC 4303, 3.4.3). The owner's address is read from the
   database and dialled **only inside `peer_networks`**, without redirects, with
   `forward_timeout`.
-- **Mutual TLS on the internal port (since v0.16.0), optional.** With
-  `tls_cert_file`, `tls_key_file` and `tls_ca_file` (secret references, **all three or
-  none**: `check-config` refuses a partial set) the channel runs over mutual TLS 1.3. Each
+- **Mutual TLS on the internal port (since v0.16.0, working files since v0.16.1),
+  optional.** With `tls_cert_file`, `tls_key_file` and `tls_ca_file` (file paths or
+  `vault:` references, **all three or none**: `check-config` refuses a partial set) the channel runs over mutual TLS 1.3. Each
   replica presents its certificate, accepts only peers the CA signed, and checks that the
   server's certificate carries `tls_server_name` (default `llmflow-ha`; replicas are
   dialled by IP). The HMAC signatures stay: they bind each answer to its request and
@@ -746,7 +756,7 @@ model "llama" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.16.0 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.16.1 (with the key files present,
 and organisations around it).
 
 - **Convention.** A job serves model `M` on port `P` when its name (or else its comment)
@@ -877,7 +887,7 @@ check use `llmflow-gateway audit verify` with a public key kept elsewhere (see
 server in front of the tool servers of the configuration. It speaks the Streamable
 HTTP binding of revision **2026-07-28** and, for older clients, the initialize
 handshake of **2025-11-25** (and 2025-06-18, 2025-03-26). A client authenticates
-with its virtual key. This block passes `llmflow-gateway check-config` v0.16.0
+with its virtual key. This block passes `llmflow-gateway check-config` v0.16.1
 (with the key files present, and an `sso` block, organisations, a pool and a model
 around it):
 
@@ -1113,7 +1123,7 @@ PostgreSQL. The estimate undercounts tool-call and reasoning tokens.
 
 ## Limitations {#limitations}
 
-Open defects of v0.16.0, as the repository lists them:
+Open defects of v0.16.1, as the repository lists them:
 
 1. **Rate limits and the key cache are per process.** Since v0.14.0 the fair-share
    state is shared between replicas **with an `ha` block** (see
@@ -1125,7 +1135,7 @@ Open defects of v0.16.0, as the repository lists them:
    `lease_ttl`) requests are admitted at the lowest priority without an owner's
    decision; a new owner's safety margin is the in-flight count persisted up to
    `usage_persist` earlier; the fencing token is checked by PostgreSQL and by the
-   replicas, not by vLLM. Without the `tls_*` files (mutual TLS since v0.16.0) the
+   replicas, not by vLLM. Without the `tls_*` files (mutual TLS, usable from v0.16.1) the
    internal channel is authenticated, not encrypted.
 2. **Budgets lag.** The cost is known when a request ends, so a burst of long
    requests can overspend by what is in flight. Several gateways see each other's
