@@ -51,10 +51,11 @@ curl https://llm.example.org/v1/responses \
   -d '{"model": "llama-3.3-70b", "input": "Hello"}'
 ```
 
-**Why.** vLLM keeps stored responses in the memory of the instance that produced
-them, readable and continuable by anyone who holds the id. On a shared cluster, a
-tenant holding an id could read or continue another tenant's conversation, so the
-gateway does not allow state. `GET /v1/responses/{id}` and the cancel route are not
+**Why.** vLLM can keep responses in the memory of the instance that produced them
+(`VLLM_ENABLE_RESPONSES_API_STORE=1`), readable and continuable by anyone who holds
+the id. The gateway forces `store: false` and refuses the stateful fields
+regardless, so a deployment with the store enabled stays safe: on a shared cluster
+no tenant can read or continue another's conversation. `GET /v1/responses/{id}` and the cancel route are not
 routed.
 
 ## Agents that speak the Anthropic API {#anthropic}
