@@ -13,7 +13,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.11.0.** The versions so far:
+**The current release is v0.12.0.** The versions so far:
 
 | Version | Content |
 | --- | --- |
@@ -28,6 +28,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.9.0](https://github.com/go-llmflow/gateway/releases/tag/v0.9.0) | **security audit and chaos release** (2026-10-26): findings A1 to A9 fixed, among them a high one (A3). See [Security]({{< relref "security.md" >}}) |
 | [v0.10.0](https://github.com/go-llmflow/gateway/releases/tag/v0.10.0) | **durable accounting. Breaking: `store.spool_dir` is mandatory with the postgres store.** `sso.min_refresh`; dependencies at the go 1.27.3 floor. See [Upgrading to v0.10.0](#upgrading-v0100) |
 | [v0.11.0](https://github.com/go-llmflow/gateway/releases/tag/v0.11.0) | **fallback on saturation (#58)**: `fallback_on` and `saturation_waiting`. **Breaking for dashboards:** `llmflow_fallbacks_total` has a `reason` label. See [Fallbacks](#fallbacks) |
+| [v0.12.0](https://github.com/go-llmflow/gateway/releases/tag/v0.12.0) | **Anthropic as an opt-in upstream, and cost units**: see [Anthropic as an upstream](#anthropic) and [Cost units](#cost-units). A **PostgreSQL migration** (a `unit` column) runs at start-up. `x-api-key` is accepted as a credential |
 
 ```sh
 go install github.com/go-llmflow/gateway/cmd/llmflow-gateway@latest
@@ -168,7 +169,7 @@ webhook and/or by e-mail through an SMTP relay.
 The configuration is written in
 [HCL2 native syntax](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md);
 the repository's `examples/gateway.hcl` is parsed by its test suite, so it stays
-valid. This extract was run through `llmflow-gateway check-config` v0.11.0 (with
+valid. This extract was run through `llmflow-gateway check-config` v0.12.0 (with
 the key files present):
 
 ```hcl
@@ -352,6 +353,123 @@ also governs the outage case: a model set to `["saturated"]` alone no longer fal
 when its upstream is unavailable. The real-vLLM check is on the
 [Benchmarking]({{< relref "benchmarking.md" >}}#verified-vllm) page.
 
+### Anthropic as an upstream (opt-in, since v0.12.0) {#anthropic}
+
+Several institutions can share **one Anthropic organisation's API usage** through the
+gateway, with its keys, budgets, fair share, audit and guardrails. The only path is an
+**Anthropic API key under the Commercial Terms**: pooling Claude Pro or Max
+subscriptions is forbidden by the Consumer Terms, and Claude Code's documentation
+forbids routing requests through Free, Pro or Max credentials on behalf of users
+([legal and compliance](https://code.claude.com/docs/en/legal-and-compliance)). The
+gateway therefore never relays a subscription: it drops the OAuth `anthropic-beta`
+capability and never forwards a client's `Authorization` or `x-api-key`. This is not
+legal advice: check your institution's contracts with your DPO.
+
+This block, from the gateway's `examples/anthropic.hcl` with this page's names, passes
+`llmflow-gateway check-config` v0.12.0 (with the key files present, and the
+organisations, the `b300` pool and the local `llama-3.3-70b` model of that example
+around it):
+
+```hcl
+pool "anthropic" { capacity = 32 }   # concurrent requests the institutions share at Anthropic
+
+model "claude-sonnet" {
+  provider        = "anthropic"
+  upstream_model  = "claude-sonnet-5-5"
+  pool            = "anthropic"
+  allow_external  = true
+  orgs            = ["instA", "instB"]
+  anthropic_betas = ["context-management-2025-06-27"]
+  cost {
+    unit                    = "USD"
+    price_date              = "2026-10-26"
+    input_per_mtok          = 2
+    output_per_mtok         = 10
+    cached_per_mtok         = 0.1
+    cache_write_5m_per_mtok = 2.5
+    cache_write_1h_per_mtok = 4
+  }
+  upstream "api" { base_url = "https://api.anthropic.com" }
+  org_key "instA" { key_file = "/etc/llmflow/anthropic-instA.key" }
+  org_key "instB" { key_file = "/etc/llmflow/anthropic-instB.key" }
+  fallbacks   = ["llama-3.3-70b"]
+  fallback_on = ["unavailable"]
+}
+
+guardrail "pii" {
+  type = "pii"
+  orgs = ["instA", "instB"]
+}
+guardrail "secrets" {
+  type = "hide_secrets"
+  orgs = ["instA", "instB"]
+}
+```
+
+(The model names, prices and `price_date` are the README's example; read the current
+price list and put its date in `price_date`.) What `check-config` enforces:
+
+- **`allow_external = true`** is required, because prompts leave the site, with an
+  explicit `orgs` or `teams` allow-list (others get 404) and https.
+- **`external_requires_guardrails`** (top level, default true): every allowed
+  organisation or team needs pre-call `pii` and `hide_secrets` guardrails, masking or
+  blocking and fail-closed. They are checked at configuration time and again on every
+  request, which answers 503 when they are missing.
+- **One API key per organisation** (`org_key`) when more than one may use the model.
+  Anthropic's prompt cache is isolated per **workspace** (the README quotes the prompt
+  caching page, read on 2026-10-26), which is the timing side channel that `cache_salt`
+  closes for vLLM; Anthropic accepts no salt. Two organisations naming the same key
+  file are refused, and if two ever resolve to the same workspace
+  (`anthropic-workspace-id` on the answers) both are refused with 503. With
+  `cache_isolation = "none"`, one key may serve everybody, and the residual risk is a
+  shared cache between institutions.
+- An external model is **never a fallback target** and never shares a pool with vLLM
+  models.
+
+**Routes.** `/v1/messages` only, JSON and streaming. `/v1/chat/completions` and the
+other routes answer **400** for an Anthropic model, because Anthropic's
+OpenAI-compatibility layer "is not considered a long-term or production-ready
+solution". `/v1/messages/count_tokens` is **not routed yet** (a patch is in
+progress): Claude Code then estimates the counts. A client may authenticate with
+`Authorization: Bearer llmf-...` **or `x-api-key: llmf-...`**, as Anthropic SDKs and
+Claude Code do.
+
+**What reaches Anthropic.** Headers are rebuilt: `x-api-key` is the organisation's
+key; `anthropic-version` is the client's if allow-listed; `anthropic-beta` carries the
+allow-listed values only (add the betas your users need, or `"*"`; never an OAuth
+one); no priority, request id or trace context is sent. The body goes through the same
+rewrite as for vLLM. Back to the client go the provider's `request-id` and
+`retry-after`, but not its `anthropic-ratelimit-*` headers, which describe the shared
+organisation's usage.
+
+**Back-off.** The pool's `capacity` is the concurrency the institutions share at
+Anthropic, apportioned by their shares. A 429 or 529 starts a back-off **for that
+organisation**, for `retry-after` seconds (at most 10 minutes; 5 seconds when the
+header is absent). During it, requests are not sent: they go to the model's
+`fallbacks` (a local vLLM group) when `fallback_on` includes `"unavailable"`, or get
+429 with `Retry-After`. Other organisations are not affected.
+
+**Accounting** uses Anthropic's usage fields (input, cache reads, cache writes split by
+5-minute and 1-hour lifetime, output), each priced at its own rate from the `cost`
+block, in USD, with its price date.
+
+### Cost units (since v0.12.0) {#cost-units}
+
+A cost has a **unit**. vLLM models cost GPU-hours by default; a model can be priced in
+a currency, with the date its prices were read (`unit = "USD"`, `price_date`).
+**GPU-hours and a currency are never added together**: a budget carries a unit
+(`{"kind":"org","name":"instA","unit":"USD","period":"month","max_cost":500}`) and
+counts only the requests of models priced in that unit; a spend report is split by
+unit, with `cost` and `unit` columns (CSV and parsable2 gain them at the end);
+currency costs go to the metric `llmflow_cost_total{team,pool,unit}`, while
+`llmflow_gpu_hours_total` stays GPU-hours only. A pool must not mix units
+(`check-config` refuses it).
+
+**Upgrading to v0.12.0.** PostgreSQL gains a `unit` column on `llmflow_usage` and on
+`llmflow_budgets_v2`, whose primary key becomes (kind, name, model, unit). Existing
+rows are GPU-hours. **The migration runs at start-up, once**: back the database up
+first, as for any schema change.
+
 ### Traces {#traces}
 
 A `tracing` block exports OpenTelemetry traces over OTLP/HTTP or gRPC. The W3C
@@ -361,7 +479,7 @@ true`. Spans carry metadata only (organisation, team, key id, model, pool, prior
 status, token counts, guardrail verdicts), **never a prompt or an answer**.
 
 This block, with the fallbacks and audio settings above, passes
-`llmflow-gateway check-config` v0.11.0 (with the key files present, and
+`llmflow-gateway check-config` v0.12.0 (with the key files present, and
 organisations, pools and models around it):
 
 ```hcl
@@ -428,7 +546,7 @@ check use `llmflow-gateway audit verify` with a public key kept elsewhere (see
 server in front of the tool servers of the configuration. It speaks the Streamable
 HTTP binding of revision **2026-07-28** and, for older clients, the initialize
 handshake of **2025-11-25** (and 2025-06-18, 2025-03-26). A client authenticates
-with its virtual key. This block passes `llmflow-gateway check-config` v0.11.0
+with its virtual key. This block passes `llmflow-gateway check-config` v0.12.0
 (with the key files present, and an `sso` block, organisations, a pool and a model
 around it):
 
@@ -664,7 +782,7 @@ PostgreSQL. The estimate undercounts tool-call and reasoning tokens.
 
 ## Limitations {#limitations}
 
-Open defects of v0.11.0, as the repository lists them:
+Open defects of v0.12.0, as the repository lists them:
 
 1. **State is per process.** In-flight counts, rate limits and the key cache live
    in memory: run **one gateway replica per pool**. Several replicas would each

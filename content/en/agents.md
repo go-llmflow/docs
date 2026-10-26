@@ -96,10 +96,34 @@ read on 2026-10-26. Claude Code versions change; check them.
 Claude Code to non-Claude models through any gateway". Pointing Claude Code at this
 gateway's `/v1/messages` and a **local vLLM model** is technically possible, since
 the route exists, but it is **unsupported by Anthropic**. The supported path is
-**Claude models** through the gateway's upcoming opt-in `anthropic` provider (gateway
-v0.12.0, in progress, not released), billed to the organisation's own API account. Do
-not rely on either until you have read the gateway's release notes.
+**Claude models**: Claude Code, then this gateway, then the Anthropic API through the
+opt-in `anthropic` provider (gateway v0.12.0), billed to the organisation's own API
+account.
 {{< /callout >}}
+
+### The supported path: Claude Code, the gateway, the Anthropic API {#claude-code-anthropic}
+
+With v0.12.0 the gateway can send `/v1/messages` to Anthropic's API instead of to
+vLLM. The configuration, with what `check-config` enforces (an explicit allow-list,
+`allow_external`, one API key per institution, and `pii` and `hide_secrets`
+guardrails), is on the [Gateway page]({{< relref "gateway.md" >}}#anthropic). For Claude
+Code it means:
+
+- Point `ANTHROPIC_BASE_URL` at the gateway and use the institution's **llmflow virtual
+  key** as the credential (below). The gateway accepts it as `Authorization: Bearer`
+  **or `x-api-key`**, so Claude Code's `ANTHROPIC_API_KEY` works too. The gateway
+  replaces it with the **organisation's own Anthropic key**; the client's credential and
+  the OAuth `anthropic-beta` capability never go out.
+- The traffic is **billed to the organisation's Anthropic API account**, per token, in
+  USD, and shown as USD in the gateway's budgets and reports, apart from GPU-hours.
+- **Not a subscription.** The gateway never relays a Pro or Max login, and pooling
+  subscriptions is forbidden (see [Subscriptions](#claude-code-subscriptions), the
+  legal and DPO notes there, and the gateway's own statement that this is not legal
+  advice).
+- `/v1/messages/count_tokens` is **not routed yet** (a patch is in progress): Claude
+  Code then estimates the token counts.
+- Prompts leave the site. That is why the guardrails are mandatory, and why the
+  route needs your DPO's agreement.
 
 ### The base URL and the credential {#claude-code-credential}
 

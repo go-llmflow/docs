@@ -11,8 +11,10 @@ command-line tools, in pure Go, for measuring LLM gateways such as the
 **adds**, and `fakevllm` is the upstream it is measured against.
 [Repository →](https://github.com/go-llmflow/bench)
 
-This page is written from the repository's README at **v0.3.2** (and v0.2.0 for the
-parts that did not change); v0.3.0 added the
+This page is written from the repository's README at **v0.4.0** (and v0.2.0 for the
+parts that did not change). v0.4.0 teaches `fakevllm` to mimic Anthropic's API and adds
+the `e2e/anthropic` suite (see [fakevllm](#fakevllm) and
+[Anthropic upstream](#verified-anthropic)); v0.3.0 added the
 `fakeupstream` package (the fake vLLM as a Go package, for tests that embed it with
 `httptest`) and the `e2e/oidc` suite, described on the
 [Identity]({{< relref "identity.md" >}}#verified) page. No command or flag of
@@ -212,6 +214,29 @@ on an outage never sees a queue. The last row is the check of that rule.
 
 **Not covered:** audio transcription (no Whisper model run on CPU) and throughput.
 
+### Anthropic upstream {#verified-anthropic}
+
+`e2e/anthropic` (bench v0.4.0) checks the gateway's
+[Anthropic upstream]({{< relref "gateway.md" >}}#anthropic) against `fakevllm` playing
+Anthropic. It needs `BENCH_GATEWAY_BIN` set to a gateway of v0.12.0 or later. It checks
+that:
+
+- the request leaves with the **organisation's key**, not the client's credential, and
+  without the OAuth beta;
+- the PII is masked, and `cache_salt` and `priority` are gone, before egress;
+- streams work, and `/v1/chat/completions` is refused;
+- the spend report, in USD, equals the price list applied to the usage the provider
+  reported;
+- a 429 with `retry-after` makes the gateway answer 429 itself, for that organisation
+  only.
+
+Result: on 2026-10-26 the fake-API suite passes against gateway v0.12.0. It proves the
+gateway's behaviour against a **fake**; it says nothing about Anthropic's real API. A
+second test, `TestGatewayInFrontOfRealAnthropic`, runs only when
+`BENCH_ANTHROPIC_KEY_FILE` names a file holding a key (the model is
+`BENCH_ANTHROPIC_MODEL`, default `claude-haiku-5-5`). **It was not run for v0.4.0, since
+no key was available.**
+
 ## fakevllm {#fakevllm}
 
 ```sh
@@ -226,6 +251,18 @@ Flags: `--addr`, `--out`, `--model`, `--reply`, `--delay`, `--token-delay`,
 | `GET /v1/models` | one model, named by `--model` |
 | `POST /v1/messages` | an Anthropic message; with `"stream": true`, the event sequence `message_start`, `content_block_start`, `content_block_delta`…, `content_block_stop`, `message_delta` (with `usage.output_tokens`), `message_stop` |
 | any other `POST` | an OpenAI `chat.completion`; with `"stream": true`, `chat.completion.chunk` events (role, one chunk per word of `--reply`, finish), the usage chunk with empty `choices` when `stream_options.include_usage` is set, then `data: [DONE]` |
+
+Since v0.4.0 the `/v1/messages` route can mimic Anthropic's behaviour:
+
+| Flag | Effect |
+| --- | --- |
+| `--status N` | answer every message with that status (429, 529, ...) |
+| `--retry-after S` | the `retry-after` header sent with it, in seconds |
+| `--cache-read N`, `--cache-write-5m N`, `--cache-write-1h N` | prompt-cache tokens reported in `usage` |
+| `--workspace ID` (or `per-key`) | the workspace named in the response headers |
+| `--ratelimit-headers` | send the `anthropic-ratelimit-*` headers |
+
+Streams carry a `ping` event after `message_start`.
 
 Usage is predictable: one prompt token per whitespace-separated word of the
 request's message and system strings, and one completion token per word of
