@@ -79,7 +79,9 @@ agent, read its documentation, which this site has not opened.
 What the gateway guarantees on this route: guardrails cover `system`, text and
 `thinking` blocks, `tool_result` content and the strings inside `tool_use` inputs;
 guarded streams pass through an Anthropic event filter; error bodies carry
-`"type": "error"`; `/v1/messages/count_tokens` is not routed. Accounting counts
+`"type": "error"`; `/v1/messages/count_tokens` (since v0.12.1) goes to vLLM's own
+endpoint and returns an **exact** count, which Claude Code uses instead of its estimate;
+it is authenticated and rate limited, not charged and not guarded. Accounting counts
 cached tokens as vLLM reports them.
 
 ## Claude Code {#claude-code}
@@ -120,8 +122,9 @@ Code it means:
   subscriptions is forbidden (see [Subscriptions](#claude-code-subscriptions), the
   legal and DPO notes there, and the gateway's own statement that this is not legal
   advice).
-- `/v1/messages/count_tokens` is **not routed yet** (a patch is in progress): Claude
-  Code then estimates the token counts.
+- `/v1/messages/count_tokens` is routed since gateway v0.12.1, to Anthropic with the
+  organisation's key; it is not charged, and the same masking applies, since a count also
+  sends the prompt off the site.
 - Prompts leave the site. That is why the guardrails are mandatory, and why the
   route needs your DPO's agreement.
 

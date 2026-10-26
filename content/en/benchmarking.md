@@ -11,8 +11,9 @@ command-line tools, in pure Go, for measuring LLM gateways such as the
 **adds**, and `fakevllm` is the upstream it is measured against.
 [Repository →](https://github.com/go-llmflow/bench)
 
-This page is written from the repository's README at **v0.4.0** (and v0.2.0 for the
-parts that did not change). v0.4.0 teaches `fakevllm` to mimic Anthropic's API and adds
+This page is written from the repository's README at **v0.5.0** (and v0.2.0 for the
+parts that did not change). v0.5.0 adds a fake slurmrestd and the Slurm end-to-end test
+(see [Slurm discovery](#verified-slurm)). v0.4.0 teaches `fakevllm` to mimic Anthropic's API and adds
 the `e2e/anthropic` suite (see [fakevllm](#fakevllm) and
 [Anthropic upstream](#verified-anthropic)); v0.3.0 added the
 `fakeupstream` package (the fake vLLM as a Go package, for tests that embed it with
@@ -236,6 +237,45 @@ second test, `TestGatewayInFrontOfRealAnthropic`, runs only when
 `BENCH_ANTHROPIC_KEY_FILE` names a file holding a key (the model is
 `BENCH_ANTHROPIC_MODEL`, default `claude-haiku-5-5`). **It was not run for v0.4.0, since
 no key was available.**
+
+### Slurm discovery {#verified-slurm}
+
+Bench v0.5.0 tests the gateway's [Slurm discovery]({{< relref "gateway.md" >}}#slurm-discovery)
+two ways.
+
+**A fake slurmrestd, without a cluster.** The package `fakeupstream` provides
+`Slurmrestd`: `GET /slurm/<version>/jobs/` answers the jobs given to `SetJobs`, in the
+shape of `OPENAPI_JOB_INFO_RESP`; `job_state` is a flag array (`["RUNNING"]`,
+`["RUNNING","COMPLETING"]`); a request must carry `X-SLURM-USER-TOKEN` set to `Token`;
+`SetDown(true)` simulates an outage (it answers 502).
+
+**`e2e/slurm_test.go` (`TestSlurmDiscoveryE2E`)** runs on a real Slurm node, as root. It
+starts the gateway with a `slurm` model; submits, with `sbatch --uid`, a job of user
+`alice` in account `physics` that claims the model (it must never be trusted); submits a
+job of `svc_llm` named `llmflow:llama:18100:3` and waits for the pool's C to reach 3;
+sends a chat request through it; runs `scancel`, and checks that C falls back to 0 and
+the model is no longer served. It reads `BENCH_SLURM_RESTD`, `BENCH_SLURM_API` (default
+`v0.0.42`), `BENCH_SLURM_JWT_FILE` (the output of `scontrol token username=svc_llm
+lifespan=7200`), `BENCH_SLURM_JOB`, `BENCH_SLURM_MODEL`, `BENCH_SLURM_MEM` and
+`BENCH_SLURM_WAIT`.
+
+**Setup.** One Debian trixie container with Slurm 24.11.5 (`slurmctld`, `slurmd`,
+`slurmrestd`, `slurm-wlm-jwt-plugin`, `munge`), `AuthAltTypes=auth/jwt`, slurmrestd run
+as an unprivileged user with data_parser versions v0.0.40 to v0.0.42, on arm64, with
+`--privileged` because slurmrestd needs to unshare namespaces. The job serves
+Qwen2.5-0.5B-Instruct on CPU and reads its key into `VLLM_API_KEY`, never through
+`--api-key`.
+
+| Job (2026-10-26, gateway #77 head, Slurm 24.11.5, data_parser v0.0.42) | Result |
+| --- | --- |
+| `fakevllm` | admitted 2 s after `sbatch`, removed 2 s after `scancel` |
+| vLLM CPU (`--enforce-eager`) | admitted 18 s after `sbatch` (once `/health` and `/v1/models` answered), chat request 200, removed 2 s after `scancel` |
+| `alice`/`physics` job claiming the model | rejected once (`reason="account"`) and never contacted |
+
+Two earlier vLLM runs failed inside vLLM (too little `/dev/shm`; torch inductor found no
+C++ compiler). Each time the job stayed `RUNNING` with `/health` down, and the gateway
+correctly never admitted it. This is one small instance on one node, as the README says;
+it is no measure of a production cluster.
 
 ## fakevllm {#fakevllm}
 
