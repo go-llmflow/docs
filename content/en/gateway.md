@@ -559,6 +559,39 @@ users of the same institution can still probe each other by timing; `team` or
 `cache_salt` is not an isolation boundary: tenants that need hard isolation need
 **a vLLM instance of their own**.
 
+### Security audit of 2026-10-26 {#audit-2026-10-26}
+
+A security audit and a chaos run of v0.8.0 were made on 2026-10-26. The fixes
+below are merged on `main` **after the v0.8.0 tag**, so they are not in a release
+yet (the latest tag is v0.8.0); each has a test that fails without the fix.
+
+- **A1, multimodal `uuid`s on every route (medium).** They were scoped per tenant
+  on chat completions and Responses only. On `/v1/rerank`, `/v2/rerank`,
+  `/tokenize` and `/v1/embeddings` the client's uuid reached vLLM unchanged, so a
+  tenant could refer to another tenant's cached media (and probe it through a rerank
+  score or a token count). The walk now follows every shape vLLM accepts, and a fuzz
+  target, `FuzzScopeEveryRoute`, checks every route.
+- **A2, a client that never reads its answer (medium).** It held its in-flight slot,
+  its fair-share grant and up to `max_response_bytes` of memory for ever. Every
+  response now has a write deadline of `max_request_duration` plus 5 s.
+- **A3, re-enabling a disabled user (high).** An organisation admin could re-enable
+  a disabled `proxy_admin` by creating the user again. Only a proxy admin may now.
+  A test, `TestAuthzMatrix`, covers every admin route against 12 principals; no
+  other cross-organisation hole was found on the 39 routes.
+- **A4, disabled teams (low).** A disabled team or project now disables its keys,
+  including one created during the disable, and the cached JWTs of its people, at
+  once.
+- **A5, export queues (medium).** With the export target down and content logging
+  on, up to 8 GiB of logs could pile up in memory. A queue is now also bounded to
+  256 MiB, and what is dropped is counted and alerted.
+- **A6 and A7, store faults (medium and low).** Key lookups and tool-list reads give
+  up after 5 s (503), a budget refresh after 30 s, and admin, UI and SCIM requests
+  after 60 s, instead of hanging when PostgreSQL is partitioned. Two replicas can
+  now start together on an empty database. Chaos tests cover PostgreSQL down,
+  partitioned and restarted, an upstream restart, a key rotation under load, two
+  replicas, and a clock stepping back. The loss of usage records during an
+  accounting outage stays an open defect (limitation 6).
+
 ### Aborted requests {#aborted}
 
 vLLM's usage chunk comes last. When the client leaves before it, the gateway
