@@ -22,7 +22,7 @@ is the reference.
 
 ## A configuration {#configuration}
 
-This block was run through `llmflow-gateway check-config` v0.9.0 (with the key
+This block was run through `llmflow-gateway check-config` v0.10.0 (with the key
 files present), together with the rest of a configuration it needs (organisations,
 a pool and a model, left out here).
 
@@ -210,14 +210,19 @@ All checks **pass for both providers**:
 | (e) an `org_admin` of organisation A against organisation B | 13 admin listings without leaks; 6 writes on B answer 403 (control: the same write on A answers 200); 7 UI pages without B |
 | (f) SCIM user and group to role | `team_admin` visible in `/admin/users/.../roles` and in the person's session |
 
-**Findings, still open when this was written:**
+**Findings** (the first two were fixed in gateway v0.10.0; the third was still
+open when this was written):
 
 - [gateway #60](https://github.com/go-llmflow/gateway/issues/60): SSO's ID-token key
-  set refreshes at most once a minute (a fixed default), so a provider rotation right
-  after start-up refuses logins; observed with dex rotating every 30 s.
-- [gateway #61](https://github.com/go-llmflow/gateway/issues/61): the README says
-  keys are fetched over https only, but http to a **loopback** issuer is accepted
-  (on purpose, for tests). Treat "https only" above as "https, except loopback".
+  set refreshed at most once a minute (a fixed default), so a provider rotation right
+  after start-up refused logins; observed with dex rotating every 30 s. **Fixed:**
+  `sso.min_refresh` (default 1 minute, at least 5 s, as for `jwt`); lower it for a
+  provider that rotates faster.
+- [gateway #61](https://github.com/go-llmflow/gateway/issues/61): the README said
+  keys are fetched over https only, but http to a **loopback** issuer is accepted.
+  **Fixed in the README:** it now states this as go-authn/oidc's deliberate
+  exemption (a loopback connection crosses no network link). Read "https only" above
+  as "https, except loopback".
 - [go-authn/bridge #79](https://github.com/go-authn/bridge/issues/79): the
   signing-key rotation procedure is not documented in the bridge's README; the one
   the test used (`authn-bridge keygen`, `retired_signing_key_files`, then a restart)

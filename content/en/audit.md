@@ -13,13 +13,14 @@ as plainly as where they hold.
 
 ## A configuration {#configuration}
 
-This was run through `llmflow-gateway check-config` v0.9.0, with the key files
+This was run through `llmflow-gateway check-config` v0.10.0, with the key files
 present and a configuration (organisations, a pool and a model) around it.
 
 ```hcl
 store {
   kind     = "postgres"
-  dsn_file = "/etc/llmflow/pg.dsn"
+  dsn_file  = "/etc/llmflow/pg.dsn"
+  spool_dir = "/var/lib/llmflow/spool"
 }
 
 audit {

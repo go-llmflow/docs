@@ -100,7 +100,7 @@ PostgreSQL) that could refuse connections or blackhole them.
 | PostgreSQL down | An unknown key gets 503, not 401, and is not cached as invalid. A cached key is served until the budgets are 3 refresh periods old, then everything fails closed; everything recovers. |
 | PostgreSQL partitioned | 503 within 5 s; fail-closed on time; recovery when the partition heals. |
 | PostgreSQL restarted | A call that draws a dead pooled connection fails safe with a 503 (one call in the test); the pool recovers by itself. |
-| **Accounting during an outage** | **Every record of the requests served during the outage is lost** and counted as failed. |
+| **Accounting during an outage** | With v0.9.0, **every record of the requests served during the outage was lost** (21 of 21 in the test, 2026-10-26). With v0.10.0's durable spool, **21 of 21 are stored once, with 21 distinct ids**. |
 | Two replicas, one database | A concurrent first start works; keys are shared; a revocation reaches the other replica after `key_cache_ttl`; the audit chain stays one verifiable chain under two concurrent writers. |
 | Upstream killed mid-stream, restarted | The client gets the partial stream; counters return to zero; the next requests are served. |
 | Key rotated with 16 requests in flight | All 16 finish and are charged to the key; the old secret is refused at once and the new one is served. |
@@ -108,10 +108,19 @@ PostgreSQL) that could refuse connections or blackhole them.
 | Export target down | The queue drops beyond 256 MiB and alerts. |
 | Clients that stop reading | Released after `max_request_duration` + 5 s. |
 
-**The accounting loss is being fixed.** A durable spool for usage records is
-planned for **v0.10.0**; until it ships, usage served during a store outage is not
-recorded, so budgets and reports undercount it, and fail-closed bounds the window
-to 3 refresh periods.
+**The accounting loss is fixed in v0.10.0.** Every batch of usage records is
+appended to a spool file and fsync'd before it is inserted into PostgreSQL, and a
+record is stored at most once (its id is the request id). From the README of
+v0.10.0, measured on 2026-10-26: `TestChaosAccountingOutage` stores 21 of 21 records
+after a PostgreSQL outage, where v0.9.0 lost all 21; with the real binary, 20 records
+were spooled while PostgreSQL was unreachable, the gateway was killed with SIGKILL
+and restarted, and 21 of 21 records were stored, with 21 distinct ids and no double
+billing. This is not a promise of zero loss: a record still in the in-memory queue
+when the process dies (about the last second of traffic) is lost, and past
+`spool_max_bytes` (256 MiB per process by default) a batch the store refuses is lost
+too, counted in `llmflow_accounting_failed_total` and alerted as
+`accounting_records_lost`. `store.spool_dir` is **mandatory** with the postgres store
+since v0.10.0; see [Upgrading to v0.10.0]({{< relref "gateway.md" >}}#upgrading-v0100).
 
 ## Dependencies {#dependencies}
 
@@ -120,11 +129,15 @@ to 3 refresh periods.
 `go 1.27.1`: built with that toolchain, nine standard-library vulnerabilities are
 reachable from them (net/http, crypto/tls, crypto/x509; fixed in Go 1.27.2 and
 1.27.3). The gateway's binary is not affected because it is built with 1.27.3, but
-those modules should raise their `go` line. go-authn/scim v0.1.0 is clean.
+those modules should raise their `go` line. go-authn/scim v0.1.0 is clean. The
+gateway v0.10.0 takes the new releases at the go 1.27.3 floor: oidc v0.4.3, rp
+v0.2.0, scim v0.1.1, s3 v0.2.1, pii v0.2.1.
 
 ## Residual risks {#residual}
 
-1. Usage served during a store outage is not recorded (see above).
+1. ~~Usage served during a store outage is not recorded~~ **fixed in v0.10.0**
+   (see above). What remains is the last second of in-memory queue on a crash, and
+   a full spool.
 2. SCIM adopts an existing gateway user with the same `userName`, and re-enables it
    if a proxy admin had disabled it by hand. The identity provider is already
    trusted for usernames through SSO.

@@ -304,13 +304,13 @@ are preempted first. Without competition an institution takes everything; under
 saturation each gets its share back.
 
 This is the policy the [gateway]({{< relref "gateway.md" >}}#fair-share-with-borrowing)
-(v0.9.0) implements in its `fairshare` package, with the two refinements the
+(v0.10.0) implements in its `fairshare` package, with the two refinements the
 simulator forced (the reservation test counts within-share requests, and usage is
 charged at release). It replaces LiteLLM and the relay here: it holds the keys,
 organisations, teams and budgets itself, and the shares belong to the
 **organisations** (the institutions). For this cluster, its configuration (HCL2,
 not YAML) would be as follows, with the 256-request capacity of the gateway's
-example. This block was run through `llmflow-gateway check-config` v0.9.0, with
+example. This block was run through `llmflow-gateway check-config` v0.10.0, with
 the key files present:
 
 ```hcl
