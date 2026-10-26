@@ -11,7 +11,11 @@ command-line tools, in pure Go, for measuring LLM gateways such as the
 **adds**, and `fakevllm` is the upstream it is measured against.
 [Repository →](https://github.com/go-llmflow/bench)
 
-This page is written from the repository's README at **v0.1.0**.
+This page is written from the repository's README at **v0.2.0**. Since v0.1.0,
+`gwbench` has a `--direct-model` flag (the model name the upstream serves, sent on
+the direct path), `fakevllm` is a cobra command line, and an `e2e/` suite checks
+the gateway against a real vLLM (see
+[Verified against a real vLLM](#verified-vllm)).
 
 ```sh
 go install github.com/go-llmflow/bench/cmd/gwbench@latest
@@ -153,11 +157,61 @@ without them. It is a measurement of one request shape.
 **Not measured:** streaming, concurrency, database writes, and model-based
 guardrails.
 
+## Verified against a real vLLM (2026-10-26) {#verified-vllm}
+
+The gateway's design rests on vLLM behaviours read in vLLM's documentation and
+source. The `e2e/` suite of `bench` checks them live: it starts `llmflow-gateway`
+with freshly generated keys, creates a virtual key per team, and drives it in
+front of a running vLLM. Without `BENCH_VLLM_URL` every test skips, so CI runs
+none of them.
+
+| Variable | Meaning |
+| --- | --- |
+| `BENCH_VLLM_URL` | the chat vLLM (required) |
+| `BENCH_VLLM_MODEL` | its model name (default: the first of `/v1/models`) |
+| `BENCH_GATEWAY_BIN` | the `llmflow-gateway` binary (default: from `PATH`) |
+| `BENCH_VLLM_MAX_NUM_SEQS` | the server's `--max-num-seqs` (the scenarios need 2) |
+| `BENCH_VLLM_KV_SHORTAGE=1` | vLLM runs with a tiny KV cache: enables the preemption checks |
+| `BENCH_VLLM_EMBED_URL`, `BENCH_VLLM_RERANK_URL` | optional embedding and score-model servers |
+
+**Setup.** vLLM 0.32.1rc1 (nightly CPU image) in arm64 Docker on an Apple M4 Max;
+models Qwen2.5-0.5B-Instruct (bfloat16), bge-small-en-v1.5 and bge-reranker-base;
+gateway v0.8.0. The released v0.32.0 arm64 image failed every CPU generation
+(`compute_slot_mapping`), which is why the nightly was used; that failure concerns
+the CPU build only. The gateway configuration is organisation A (two teams, share
+0.5) and B (one team, share 0.25) on a pool of capacity 2, so A reserves one slot
+and every request of B borrows; `cache_isolation = "org"`.
+
+Every ordering check has a **control** straight to vLLM that must come out the
+other way, and the cache checks read vLLM's own counters, never timing.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| FCFS control, direct | pass | B3, sent first, served 4.7 s before A1 |
+| Header over body | pass | body 100 and header -100: B3 first; body 100 alone: A1 first |
+| Within-share before borrowers | pass | via the gateway, A1 (sent later) served 5.2 s before B3 |
+| KV preemption | pass | 640-token KV cache, 2 x 384 tokens: the direct control preempts the newest (A1, paused 1 min 35 s); via the gateway the borrower B1 is preempted (1 min 22 s), A1 pauses at most 1.06 s and finishes first |
+| Client priority ignored | pass | body, `vllm_xargs`, `extra_body` and header at -100: order unchanged |
+| Prefix cache (vLLM's counters) | pass | same organisation 768/814; other organisation 0/814; a client's `cache_salt` 0; cached content without a salt 0; direct control 768/812 |
+| Responses | pass | `GET /v1/responses/{id}` through the gateway answers 404; the direct control is readable |
+| Messages, tokenize, embeddings, rerank | pass | complete SSE; 6 tokens on both sides; 384 dimensions; "Paris" ranked first (0.998) |
+| Accounting | pass | vLLM 132 prompt / 44 generated, the gateway charged 132 / 44 |
+| vLLM beyond `--max-num-seqs` | pass | 6 concurrent requests with 2 slots: six 200, no 429 or 503 |
+
+The last row matters for fallbacks: vLLM queues under saturation instead of
+refusing, so a [fallback]({{< relref "gateway.md" >}}#fallbacks) triggers on an
+outage, not on a queue.
+
+**Not covered:** audio transcription (no Whisper model run on CPU) and throughput.
+
 ## fakevllm {#fakevllm}
 
 ```sh
 fakevllm --addr 127.0.0.1:18000 --out requests.jsonl --model fake --reply "ok"
 ```
+
+Flags: `--addr`, `--out`, `--model`, `--reply`, `--delay`, `--token-delay`,
+`--max-body`.
 
 | Route | Answer |
 | --- | --- |

@@ -235,11 +235,13 @@ budgets, rate limits, guardrails, fair-share priority and the tenant's
 and the cancel route are not routed. Clients send the whole conversation in
 `input`, as with chat completions.
 
-**Why.** vLLM keeps every response in the memory of the instance that produced it
-(`store` defaults to true there). Anyone holding the id can read it back, continue
-it or cancel it. Behind a gateway that state would be shared by every tenant and
-would live on one upstream among several, so **a tenant holding an id could read or
-continue another tenant's conversation**.
+**Why.** vLLM *can* keep responses in the memory of the instance that produced
+them: it does so only when started with `VLLM_ENABLE_RESPONSES_API_STORE=1`. With
+that on, anyone holding an id could read a response back, continue it or cancel it,
+and behind a gateway that state would be shared by every tenant. The gateway forces
+`store: false` and refuses the stateful fields **regardless**, so a deployment with
+the store enabled stays safe. Verified against a real vLLM (see
+[Benchmarking]({{< relref "benchmarking.md" >}}#verified-vllm)): `GET /v1/responses/{id}` through the gateway answers 404.
 
 Usage is read from the Responses usage, including the final `response.completed`
 event of a stream. Guardrails read `instructions` and the `input` items; input
@@ -285,7 +287,11 @@ model "llama-70b" {
 ```
 
 Before anything has reached the client, a request moves to the next fallback when
-no upstream of the group took it, or when vLLM answered 429 or 503. The target must
+no upstream of the group took it, or when vLLM answered 429 or 503: an **outage**.
+It does **not** move on saturation: measured on 2026-10-26, a vLLM above its
+`--max-num-seqs` queues the requests and answers 200 (six requests over the limit,
+six 200s, no 429 or 503). Falling back before a queue builds up is planned
+([issue #58](https://github.com/go-llmflow/gateway/issues/58)). The target must
 be in the team's model list and within its budgets. The request acquires in the
 **target's pool** (so it gets its organisation's priority there), is rewritten for
 the target, and is **charged and recorded under the model that served it**. The
