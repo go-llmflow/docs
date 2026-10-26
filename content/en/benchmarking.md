@@ -106,19 +106,52 @@ of each gateway.
 
 ## Dated results {#results}
 
-Overhead is the paired difference against a direct call to the same upstream
-(p50 unless stated). Each result is tied to its date and protocol; none is a
-promise for another machine, another load or another request.
+Overhead is the paired difference against a direct call to the same upstream.
+Each result is tied to its date and protocol; none is a promise for another
+machine, another load or another request.
 
-| Date | Targets | Request | Overhead p50 | Protocol and load |
+**Common to both dates.** Machine: Apple M4 Max (Mac16,5), 16 cores, 128 GiB RAM,
+macOS 27.0.1. Each gateway ran with `GOMAXPROCS=1`; LiteLLM 1.106.2 ran as one
+process. Upstream: `fakevllm` on loopback, answering instantly. Client: `gwbench`,
+requests one at a time, target order shuffled every round. Each kept run is 2,000
+rounds after a warm-up of 200, and the 1-minute load was at most 4 at its start and
+at its end.
+
+### 2026-10-23: LiteLLM and llmflow, no database {#r-1023}
+
+- **Setups:** LiteLLM without PostgreSQL; llmflow v0.1.0 with the memory store.
+- **Request:** the prompt `ping`, non-streaming.
+- **Runs:** 8 kept (16,000 paired rounds), at loads 3.30 to 3.94. A first long run
+  was discarded, because the load rose to 9.44.
+
+| Overhead | p50 | p90 | p99 | per-run p50 |
 | --- | --- | --- | --- | --- |
-| 2026-10-23 | LiteLLM 1.106.2 (one process, no database); llmflow v0.1.0 (`GOMAXPROCS=1`, memory store) | small, non-streaming | LiteLLM **4.86 ms**; llmflow **117 us** (p90 5.26 ms and 161 us, p99 6.21 ms and 239 us) | 8 kept runs of 2,000 paired rounds (16,000), each started at a 1-minute load of 4 or less and discarded if it ended above; kept loads 3.30 to 3.94; one earlier long run discarded (load rose to 9.44). No streaming, no concurrency, no database write |
-| 2026-10-26, 06:26 | llmflow v0.1.0, v0.6.0, and v0.6.0 with the `hide_secrets` and `pii` guardrails | 2 KB prompt, non-streaming | v0.1.0 **97 us**; v0.6.0 **111 us**; v0.6.0 with `hide_secrets` and `pii` **599 us** | `gwbench` as described above, load gate 4; the load range, the number of runs and the machine of this run are not recorded on this page |
+| LiteLLM 1.106.2 | 4.86 ms | 5.26 ms | 6.21 ms | 4.84 to 4.93 ms |
+| llmflow v0.1.0 | 117 us | 161 us | 239 us | 115 to 120 us |
 
-What the second row says: the guardrails that scan a 2 KB prompt (secrets and
-personal data) cost about 490 us more than the same release without them, on that
-request. It is a measurement of one request shape. Guarded streaming, concurrency and a database write are not measured by either
-row.
+### 2026-10-26, 06:26: what the guardrails cost {#r-1026}
+
+- **Setups:** llmflow v0.1.0, v0.6.0, and v0.6.0 with the `hide_secrets` and `pii`
+  guardrails; memory store.
+- **Request:** a realistic 2 KB prompt, non-streaming, holding an e-mail, an IBAN,
+  a phone number and a fake GitHub token.
+- **Runs:** 8 kept, at loads 3.50 to 3.91. One run was discarded: its load ended at
+  4.40.
+- **Control:** the fake upstream's recording shows that the guarded gateway sent
+  `[EMAIL]`, `[IBAN]`, `[PHONE]` and `[TOKEN]` where the others sent the text in
+  clear, so the guardrails really ran on that prompt.
+
+| Overhead | p50 | p90 | p99 |
+| --- | --- | --- | --- |
+| v0.1.0 | 97 us | 115 us | 243 us |
+| v0.6.0 | 111 us | 130 us | 262 us |
+| v0.6.0 with `hide_secrets` and `pii` | 599 us | 621 us | 1,589 us |
+
+On that request, the two guardrails cost about 490 us at p50 over the same release
+without them. It is a measurement of one request shape.
+
+**Not measured:** streaming, concurrency, database writes, and model-based
+guardrails.
 
 ## fakevllm {#fakevllm}
 
