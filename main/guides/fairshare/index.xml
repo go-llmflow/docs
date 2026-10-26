@@ -1133,8 +1133,10 @@ the organisation&amp;rsquo;s API account. Pooling Pro or Max subscriptions is no
 &lt;li&gt;&lt;strong&gt;Credential.&lt;/strong&gt; Use &lt;code&gt;apiKeyHelper&lt;/code&gt; in &lt;code&gt;~/.claude/settings.json&lt;/code&gt;, a command that prints
 the key from a file of mode 0600. Never put the key in the project&amp;rsquo;s committed
 &lt;code&gt;.claude/settings.json&lt;/code&gt;.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;VS Code.&lt;/strong&gt; The extension takes its gateway variables from
-&lt;code&gt;claudeCode.environmentVariables&lt;/code&gt; in VS Code&amp;rsquo;s user settings.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;VS Code.&lt;/strong&gt; The documented setup puts the gateway variables, key included, in
+&lt;code&gt;claudeCode.environmentVariables&lt;/code&gt; in VS Code&amp;rsquo;s user settings: keep that file out of
+any synced or committed location. A setup with the key file only, using
+&lt;code&gt;claudeCode.disableLoginPrompt&lt;/code&gt;, is not verified against a gateway.&lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;Project.&lt;/strong&gt; From gateway v0.13.0 (in progress), a project can be named with an
 &lt;code&gt;X-Llmflow-Project&lt;/code&gt; header, set in the repository&amp;rsquo;s &lt;code&gt;.claude/settings.json&lt;/code&gt; as
 &lt;code&gt;ANTHROPIC_CUSTOM_HEADERS&lt;/code&gt;, or with &lt;code&gt;requestOptions.headers&lt;/code&gt; in Continue.&lt;/li&gt;
