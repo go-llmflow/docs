@@ -9,7 +9,7 @@ What a finance director, a lab manager or an organisation administrator gets fro
 [gateway]({{< relref "gateway.md" >}}) since **v0.13.0**: who used how much, in which
 unit, compared with the previous period, as a page, as a file, and next to what Slurm
 says about the batch jobs on the same GPUs. This page is written from the repository's
-README at tag v0.15.1 (the feature is from v0.13.0); nothing here was measured on a production cluster, and the charts
+README at tag v0.16.0 (the feature is from v0.13.0); nothing here was measured on a production cluster, and the charts
 were checked in a browser under the page's security policy, not by users.
 
 ## Who is charged: organisation, lab, team, project, user {#dimensions}
@@ -44,7 +44,7 @@ org "etabA" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.15.1 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.16.0 (with the key files present,
 and a pool and a model around it). Existing configurations stay valid: a lab is an
 attribute of a team, not a new nesting.
 
@@ -143,7 +143,7 @@ slurm {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.15.1 (with the file present).
+This block passes `llmflow-gateway check-config` v0.16.0 (with the file present).
 
 How the file is read:
 
@@ -165,12 +165,13 @@ How the file is read:
 
 ## What this does not do {#known-issues}
 
-Known at v0.15.1:
+Known at v0.16.0:
 
-- **The binary grew.** go-pdfkit's root package pulls in a widget toolkit the export never
-  uses: the gateway binary is 33.8 MB without the exports and 38.0 MB with them
-  (darwin/arm64, `CGO_ENABLED=0 -trimpath`). This is open defect 18 in the
-  [Limitations]({{< relref "gateway.md" >}}#limitations); the fix belongs upstream.
+- **The binary grew, then shrank.** In v0.13.0 to v0.15.1 go-pdfkit's root package pulled
+  in a widget toolkit the export never used. Fixed in v0.15.2 by go-pdfkit v0.20.0: the
+  binary went from 42,110,114 to 39,790,834 bytes (5.5 % smaller; see open defect 18 in the
+  [Limitations]({{< relref "gateway.md" >}}#limitations)). The PDF writer is
+  [go-pdfkit](https://go-pdfkit.github.io/docs/).
 - **Not measured.** The cost of building a report on a large database, and how long an
   export takes at 100,000 rows, are not measured. The only bounds stated are the
   366 days, the 100,000 rows and the 60 seconds.
