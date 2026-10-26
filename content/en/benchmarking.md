@@ -11,7 +11,8 @@ command-line tools, in pure Go, for measuring LLM gateways such as the
 **adds**, and `fakevllm` is the upstream it is measured against.
 [Repository →](https://github.com/go-llmflow/bench)
 
-This page is written from the repository's README at **v0.2.0**; v0.3.0 adds the
+This page is written from the repository's README at **v0.3.2** (and v0.2.0 for the
+parts that did not change); v0.3.0 added the
 `fakeupstream` package (the fake vLLM as a Go package, for tests that embed it with
 `httptest`) and the `e2e/oidc` suite, described on the
 [Identity]({{< relref "identity.md" >}}#verified) page. No command or flag of
@@ -201,10 +202,13 @@ other way, and the cache checks read vLLM's own counters, never timing.
 | Messages, tokenize, embeddings, rerank | pass | complete SSE; 6 tokens on both sides; 384 dimensions; "Paris" ranked first (0.998) |
 | Accounting | pass | vLLM 132 prompt / 44 generated, the gateway charged 132 / 44 |
 | vLLM beyond `--max-num-seqs` | pass | 6 concurrent requests with 2 slots: six 200, no 429 or 503 |
+| Fallback on saturation (gateway v0.11.0, #58) | pass | two borrowing streams of b1 fill pool `cpu` (C = 2); the next b1 request is served by `chat-spare` (`X-Llmflow-Model`), a1's within-share request stays on `chat`; `llmflow_fallbacks_total{reason="saturated"}` = 1. Run on 2026-10-26 with `--max-num-seqs 4` (both pools on one vLLM), with a gateway built from gateway#66, before the v0.11.0 release |
 
-The last row matters for fallbacks: vLLM queues under saturation instead of
-refusing, so a [fallback]({{< relref "gateway.md" >}}#fallbacks) triggers on an
-outage, not on a queue.
+The vLLM-beyond-`--max-num-seqs` row is why saturation needs its own rule: vLLM
+queues instead of refusing, so a [fallback]({{< relref "gateway.md" >}}#fallbacks)
+on an outage never sees a queue. The last row is the check of that rule.
+`TestFallbackOnSaturation` needs `BENCH_VLLM_MAX_NUM_SEQS=4` (a vLLM started with
+`--max-num-seqs 4`) and a gateway of v0.11.0 or later; it skips otherwise.
 
 **Not covered:** audio transcription (no Whisper model run on CPU) and throughput.
 

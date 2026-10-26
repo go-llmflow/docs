@@ -13,7 +13,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.10.0.** The versions so far:
+**The current release is v0.11.0.** The versions so far:
 
 | Version | Content |
 | --- | --- |
@@ -27,6 +27,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.8.0](https://github.com/go-llmflow/gateway/releases/tag/v0.8.0) | **admin web UI and MCP gateway (issue #38, items 6 and 7)**. See [Admin web UI](#admin-ui) and [MCP gateway](#mcp) |
 | [v0.9.0](https://github.com/go-llmflow/gateway/releases/tag/v0.9.0) | **security audit and chaos release** (2026-10-26): findings A1 to A9 fixed, among them a high one (A3). See [Security]({{< relref "security.md" >}}) |
 | [v0.10.0](https://github.com/go-llmflow/gateway/releases/tag/v0.10.0) | **durable accounting. Breaking: `store.spool_dir` is mandatory with the postgres store.** `sso.min_refresh`; dependencies at the go 1.27.3 floor. See [Upgrading to v0.10.0](#upgrading-v0100) |
+| [v0.11.0](https://github.com/go-llmflow/gateway/releases/tag/v0.11.0) | **fallback on saturation (#58)**: `fallback_on` and `saturation_waiting`. **Breaking for dashboards:** `llmflow_fallbacks_total` has a `reason` label. See [Fallbacks](#fallbacks) |
 
 ```sh
 go install github.com/go-llmflow/gateway/cmd/llmflow-gateway@latest
@@ -167,7 +168,7 @@ webhook and/or by e-mail through an SMTP relay.
 The configuration is written in
 [HCL2 native syntax](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md);
 the repository's `examples/gateway.hcl` is parsed by its test suite, so it stays
-valid. This extract was run through `llmflow-gateway check-config` v0.10.0 (with
+valid. This extract was run through `llmflow-gateway check-config` v0.11.0 (with
 the key files present):
 
 ```hcl
@@ -308,23 +309,48 @@ itself):
 
 ```hcl
 model "llama-70b" {
-  pool      = "b300"
-  fallbacks = ["llama-8b"]
+  pool               = "b300"
+  fallbacks          = ["llama-8b"]
+  fallback_on        = ["unavailable", "saturated"]  # default ["unavailable"]
+  saturation_waiting = 4                             # optional
   # ...
 }
 ```
 
-Before anything has reached the client, a request moves to the next fallback when
-no upstream of the group took it, or when vLLM answered 429 or 503: an **outage**.
-It does **not** move on saturation: measured on 2026-10-26, a vLLM above its
-`--max-num-seqs` queues the requests and answers 200 (six requests over the limit,
-six 200s, no 429 or 503). Falling back before a queue builds up is planned
-([issue #58](https://github.com/go-llmflow/gateway/issues/58)). The target must
-be in the team's model list and within its budgets. The request acquires in the
-**target's pool** (so it gets its organisation's priority there), is rewritten for
-the target, and is **charged and recorded under the model that served it**. The
-response carries `X-Llmflow-Model`, and `llmflow_fallbacks_total{from,to}` counts
-the moves. Any other answer, a 400 for instance, is final.
+**`"unavailable"` (the default): an outage.** Before anything has reached the client,
+a request moves to the next fallback when no upstream of the group took it, or when
+vLLM answered 429 or 503.
+
+**`"saturated"` (since v0.11.0, [issue #58](https://github.com/go-llmflow/gateway/issues/58)).**
+Measured on 2026-10-26, a vLLM above its `--max-num-seqs` does not refuse: it queues the
+requests and answers 200 (six requests over the limit, six 200s, no 429 or 503). So
+the gateway decides saturation itself:
+
+- A pool is **saturated** when it already had `capacity` (C) requests in flight when
+  the request arrived. With `saturation_waiting = N`, it is also saturated when the
+  group's upstreams report N or more requests waiting in `vllm:num_requests_waiting`
+  (read from each upstream's `/metrics`, which vLLM serves without authentication, so
+  keep its ports internal; an upstream that cannot be read counts as unknown, never
+  as saturated).
+- **Only a borrowing request moves.** A request within its organisation's share keeps
+  its reservation and queues in its own pool; the README states this as a property,
+  tested over 200 random schedules and failing on a planted regression.
+- **Only into room**, and the check of the target pool's room and the admission there
+  are one atomic step. A request moves **at most once**; with no room anywhere it
+  waits in its own pool, so two saturated groups naming each other cannot ping-pong.
+
+In both cases the target must be in the team's model list and within its budgets. The
+request acquires in the **target's pool** (so it gets its organisation's priority
+there), is rewritten for the target, and is **charged and recorded under the model that
+served it**. The response carries `X-Llmflow-Model`, and
+`llmflow_fallbacks_total{from,to,reason}` counts the moves, `reason` being
+`unavailable` or `saturated`. Any other answer, a 400 for instance, is final.
+
+**Upgrading to v0.11.0.** `llmflow_fallbacks_total` has a new `reason` label (breaking
+for a dashboard or an alert that matches its labels exactly). And `fallback_on` now
+also governs the outage case: a model set to `["saturated"]` alone no longer falls back
+when its upstream is unavailable. The real-vLLM check is on the
+[Benchmarking]({{< relref "benchmarking.md" >}}#verified-vllm) page.
 
 ### Traces {#traces}
 
@@ -335,7 +361,7 @@ true`. Spans carry metadata only (organisation, team, key id, model, pool, prior
 status, token counts, guardrail verdicts), **never a prompt or an answer**.
 
 This block, with the fallbacks and audio settings above, passes
-`llmflow-gateway check-config` v0.10.0 (with the key files present, and
+`llmflow-gateway check-config` v0.11.0 (with the key files present, and
 organisations, pools and models around it):
 
 ```hcl
@@ -402,7 +428,7 @@ check use `llmflow-gateway audit verify` with a public key kept elsewhere (see
 server in front of the tool servers of the configuration. It speaks the Streamable
 HTTP binding of revision **2026-07-28** and, for older clients, the initialize
 handshake of **2025-11-25** (and 2025-06-18, 2025-03-26). A client authenticates
-with its virtual key. This block passes `llmflow-gateway check-config` v0.10.0
+with its virtual key. This block passes `llmflow-gateway check-config` v0.11.0
 (with the key files present, and an `sso` block, organisations, a pool and a model
 around it):
 
@@ -638,7 +664,7 @@ PostgreSQL. The estimate undercounts tool-call and reasoning tokens.
 
 ## Limitations {#limitations}
 
-Open defects of v0.10.0, as the repository lists them:
+Open defects of v0.11.0, as the repository lists them:
 
 1. **State is per process.** In-flight counts, rate limits and the key cache live
    in memory: run **one gateway replica per pool**. Several replicas would each
