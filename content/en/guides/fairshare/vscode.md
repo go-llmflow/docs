@@ -63,8 +63,10 @@ virtual key as the credential. The full, sourced instructions are on the
 - **Credential.** Use `apiKeyHelper` in `~/.claude/settings.json`, a command that prints
   the key from a file of mode 0600. Never put the key in the project's committed
   `.claude/settings.json`.
-- **VS Code.** The extension takes its gateway variables from
-  `claudeCode.environmentVariables` in VS Code's user settings.
+- **VS Code.** The documented setup puts the gateway variables, key included, in
+  `claudeCode.environmentVariables` in VS Code's user settings: keep that file out of
+  any synced or committed location. A setup with the key file only, using
+  `claudeCode.disableLoginPrompt`, is not verified against a gateway.
 - **Project.** From gateway v0.13.0 (in progress), a project can be named with an
   `X-Llmflow-Project` header, set in the repository's `.claude/settings.json` as
   `ANTHROPIC_CUSTOM_HEADERS`, or with `requestOptions.headers` in Continue.

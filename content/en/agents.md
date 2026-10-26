@@ -149,25 +149,41 @@ saves a setting there; if you create it by hand, add it to your gitignore first.
 (version checks, telemetry, release notes). It also **disables auto-updates**, so plan
 another update path.
 
-For the **VS Code extension**, Anthropic's page puts the gateway variables in
+For the **VS Code extension**, there are two setups. Anthropic's pages are
+[connect to an LLM gateway](https://code.claude.com/docs/en/llm-gateway-connect#vs-code-extension)
+and [Claude Code in VS Code](https://code.claude.com/docs/en/vs-code#use-third-party-providers).
+
+**1. The documented, reliable setup.** `ANTHROPIC_BASE_URL` and the credential go in
 `claudeCode.environmentVariables`, in VS Code's own user settings (the command
-**Preferences: Open User Settings (JSON)**). It says the extension checks credentials
-from this setting before launching, so it is the reliable place for the credential,
-and that values in `~/.claude/settings.json` reach the spawned process but not the
-extension's own login check:
+**Preferences: Open User Settings (JSON)**). Anthropic says the extension checks
+credentials from this setting before launching, so it is the reliable place for the
+credential, and that values in `~/.claude/settings.json` reach the spawned process but
+not the extension's own login check:
 
 ```json
 {
   "claudeCode.environmentVariables": [
-    { "name": "ANTHROPIC_BASE_URL", "value": "https://llm.example.org" }
+    { "name": "ANTHROPIC_BASE_URL", "value": "https://llm.example.org" },
+    { "name": "ANTHROPIC_AUTH_TOKEN", "value": "llmf-..." }
   ]
 }
 ```
 
-Anthropic's own example puts `ANTHROPIC_AUTH_TOKEN` there too, which means the key
-sits as plain text in that file. That is a trade-off against the recommendation above,
-and this page has not verified whether an `apiKeyHelper` alone satisfies the
-extension's login check; test it with `/status` before relying on it.
+This **puts the key in VS Code's settings file** as plain text. Keep that file out of
+any synced or committed location (Settings Sync, a dotfiles repository), and use a key
+meant for this one purpose, so that it can be revoked on its own.
+
+**2. A key file and no key in settings. Not verified.** The VS Code page says, for
+third-party providers, to check **Disable Login Prompt** (the setting
+`claudeCode.disableLoginPrompt`, "skip authentication prompts (for third-party provider
+setups)") and to put the provider configuration in `~/.claude/settings.json`, which
+"ensures your settings are shared between the VS Code extension and the CLI". By
+analogy, the `apiKeyHelper` setup above, in `~/.claude/settings.json`, with
+`claudeCode.disableLoginPrompt` checked, would keep the key in a 0600 file and out of
+every settings file. **This page has not verified it against a gateway**, and the
+connect page's statement that the extension's login check reads
+`claudeCode.environmentVariables` is what makes it uncertain: try it, and confirm with
+`/status`, before relying on it.
 
 Run `/status` in Claude Code: an `Anthropic base URL` line, and an `apiKeyHelper` line
 naming the credential, confirm that the gateway is in use.
