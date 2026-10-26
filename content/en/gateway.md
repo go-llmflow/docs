@@ -13,7 +13,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.12.0.** The versions so far:
+**The current release is v0.13.0.** The versions so far:
 
 | Version | Content |
 | --- | --- |
@@ -29,6 +29,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.10.0](https://github.com/go-llmflow/gateway/releases/tag/v0.10.0) | **durable accounting. Breaking: `store.spool_dir` is mandatory with the postgres store.** `sso.min_refresh`; dependencies at the go 1.27.3 floor. See [Upgrading to v0.10.0](#upgrading-v0100) |
 | [v0.11.0](https://github.com/go-llmflow/gateway/releases/tag/v0.11.0) | **fallback on saturation (#58)**: `fallback_on` and `saturation_waiting`. **Breaking for dashboards:** `llmflow_fallbacks_total` has a `reason` label. See [Fallbacks](#fallbacks) |
 | [v0.12.0](https://github.com/go-llmflow/gateway/releases/tag/v0.12.0) | **Anthropic as an opt-in upstream, and cost units**: see [Anthropic as an upstream](#anthropic) and [Cost units](#cost-units). A **PostgreSQL migration** (a `unit` column) runs at start-up. `x-api-key` is accepted as a credential |
+| [v0.13.0](https://github.com/go-llmflow/gateway/releases/tag/v0.13.0) | **finance reports**: [project attribution](#attribution) by header, the `lab` and `user` dimensions, the `/ui/reports` page, exports (CSV, XLSX, PDF) and reconciliation with Slurm's `sreport`. See [Finance reports]({{< relref "finance-reports.md" >}}). Existing configurations stay valid |
 
 ```sh
 go install github.com/go-llmflow/gateway/cmd/llmflow-gateway@latest
@@ -156,7 +157,8 @@ token.
 | `GET /admin/keys?team=`, `POST /admin/keys`; `DELETE /admin/keys/{id}` | keys (the `llmf-...` secret is returned once); a key may carry `tags` |
 | `GET`, `PUT /admin/budgets`; `DELETE /admin/budgets?kind=&name=&model=` | budgets: `{"kind","name","model","period","max_cost","soft_limit"}` with `period` `day`, `week` or `month` |
 | `POST /admin/budgets/increase` | a temporary increase with an expiry |
-| `GET /admin/spend?from=&to=&group_by=&format=` | spend report grouped by any of `org`, `team`, `project`, `key`, `model`, `pool`, `tag`; `json`, `csv` or `parsable2`; filtered to what the caller may see |
+| `GET /admin/spend?from=&to=&group_by=&format=` | spend report grouped by any of `org`, `lab`, `team`, `project`, `user`, `key`, `model`, `pool`, `tag`, `day`; `json`, `csv` or `parsable2`; filtered to what the caller may see; 60 s deadline |
+| `GET /admin/export?from=&to=&format=csv\|xlsx\|pdf` | the report as a download, audited; see [Finance reports]({{< relref "finance-reports.md" >}}#exports) |
 | `GET /admin/usage.csv?from=&to=` | the v0.1 export |
 | `GET /admin/fairshare` | reservations, in-flight, borrowing, usage, level fairshare and rank per pool and organisation |
 
@@ -169,7 +171,7 @@ webhook and/or by e-mail through an SMTP relay.
 The configuration is written in
 [HCL2 native syntax](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md);
 the repository's `examples/gateway.hcl` is parsed by its test suite, so it stays
-valid. This extract was run through `llmflow-gateway check-config` v0.12.0 (with
+valid. This extract was run through `llmflow-gateway check-config` v0.13.0 (with
 the key files present):
 
 ```hcl
@@ -366,7 +368,7 @@ capability and never forwards a client's `Authorization` or `x-api-key`. This is
 legal advice: check your institution's contracts with your DPO.
 
 This block, from the gateway's `examples/anthropic.hcl` with this page's names, passes
-`llmflow-gateway check-config` v0.12.0 (with the key files present, and the
+`llmflow-gateway check-config` v0.13.0 (with the key files present, and the
 organisations, the `b300` pool and the local `llama-3.3-70b` model of that example
 around it):
 
@@ -470,6 +472,53 @@ currency costs go to the metric `llmflow_cost_total{team,pool,unit}`, while
 rows are GPU-hours. **The migration runs at start-up, once**: back the database up
 first, as for any schema change.
 
+### Project attribution, labs and users (since v0.13.0) {#attribution}
+
+Coding clients do not say which project a request belongs to. Claude Code sends no
+project header of its own, but it sends whatever `ANTHROPIC_CUSTOM_HEADERS` holds;
+Continue sends the headers of `requestOptions.headers`. A request can therefore name
+its project in a header (`X-Llmflow-Project` by default), and a team can carry an
+optional `lab`:
+
+```hcl
+attribution {
+  project_header  = "X-Llmflow-Project"  # the default
+  default_project = "general"            # optional
+}
+
+org "etabA" {
+  share = 0.5
+  team "physics-1" { lab = "physics" }   # optional lab: org, lab, team, project
+}
+```
+
+This block passes `llmflow-gateway check-config` v0.13.0 (with the key files present,
+and a pool and a model around it).
+
+- **What the header may name.** A project **name**, looked up in the key's own team
+  only: another team's or organisation's project cannot even be named. The project
+  must exist and be enabled; a key pinned to a project accepts only that one. For a
+  key with an owner, the owner must still hold a stored `member`, `team_admin`,
+  `org_admin` or `proxy_admin` role on the team; for a JWT the team comes from its
+  verified `map`. **Every refusal is the same generic 403** ("project not allowed for
+  this key"), counted in `llmflow_denied_total{reason="project"}`.
+- **Without the header**, the key's project applies, then `default_project` if the
+  team has a project of that name, else none.
+- **The effective project** is charged, budgeted, written to the request log and
+  recorded. The lookups read state loaded with the budgets, so the request path does
+  not read the store.
+- **SSO roles do not count.** A role that comes only from SSO ID-token claims is not
+  stored, so it does not satisfy the check: grant the role in the gateway, or through
+  SCIM.
+- **Two reporting dimensions.** `lab` is an accounting level only (RBAC does not use
+  it), stamped on each record at request time, so moving a team to another lab does
+  not rewrite history. `user` is the key's owner, or a JWT's username when it is a
+  valid gateway user name, otherwise the JWT's stable synthetic key id; never a token.
+  A lab is an attribute rather than a nesting so that every existing configuration
+  stays valid.
+
+How a coding agent sets the header: [Coding agents]({{< relref "agents.md" >}}#claude-code-project).
+
 ### Traces {#traces}
 
 A `tracing` block exports OpenTelemetry traces over OTLP/HTTP or gRPC. The W3C
@@ -479,7 +528,7 @@ true`. Spans carry metadata only (organisation, team, key id, model, pool, prior
 status, token counts, guardrail verdicts), **never a prompt or an answer**.
 
 This block, with the fallbacks and audio settings above, passes
-`llmflow-gateway check-config` v0.12.0 (with the key files present, and
+`llmflow-gateway check-config` v0.13.0 (with the key files present, and
 organisations, pools and models around it):
 
 ```hcl
@@ -527,6 +576,7 @@ third-party asset is loaded.
 | Keys | list per team; create (the secret is shown **once**, on a page that is not cached), rotate with a grace period, revoke |
 | Budgets | budgets with spent and limit; set and delete |
 | Spend | GPU-hours, requests and tokens over a period, grouped by organisation, team, project, key, model, pool or tag |
+| Reports (since v0.13.0) | the finance view of the spend report: period, drill-down, previous period, charts, exports, Slurm reconciliation. See [Finance reports]({{< relref "finance-reports.md" >}}) |
 | Fair share | live state per pool: reservation, in flight, borrowing, level fairshare and rank |
 | Audit | entries page by page, and a button that verifies the chain (status of the checkpoints and of the anchor) |
 
@@ -546,7 +596,7 @@ check use `llmflow-gateway audit verify` with a public key kept elsewhere (see
 server in front of the tool servers of the configuration. It speaks the Streamable
 HTTP binding of revision **2026-07-28** and, for older clients, the initialize
 handshake of **2025-11-25** (and 2025-06-18, 2025-03-26). A client authenticates
-with its virtual key. This block passes `llmflow-gateway check-config` v0.12.0
+with its virtual key. This block passes `llmflow-gateway check-config` v0.13.0
 (with the key files present, and an `sso` block, organisations, a pool and a model
 around it):
 
@@ -782,7 +832,7 @@ PostgreSQL. The estimate undercounts tool-call and reasoning tokens.
 
 ## Limitations {#limitations}
 
-Open defects of v0.12.0, as the repository lists them:
+Open defects of v0.13.0, as the repository lists them:
 
 1. **State is per process.** In-flight counts, rate limits and the key cache live
    in memory: run **one gateway replica per pool**. Several replicas would each
@@ -842,6 +892,16 @@ Open defects of v0.12.0, as the repository lists them:
 17. **The performance of v0.6 and v0.7 is not measured yet.** The
     [overhead figures](#overhead) are those of v0.1.0; an independent benchmark of
     the current release is waiting for a quiet machine.
+18. **The PDF export links more than it uses.** go-pdfkit's root package imports
+    go-widgets/toolkit, so the gateway binary also carries code the export never
+    reaches: 33.8 MB without the exports, 38.0 MB with them (darwin/arm64,
+    `CGO_ENABLED=0 -trimpath`). The fix belongs upstream; until then `govulncheck`
+    also scans those modules.
+
+Known gaps of the finance reports, from the maintainers' notes for v0.13.0 (they
+are not all in the README of that tag): the bar chart and the daily series are
+still drawn by the gateway's own renderer, not yet by go-plot (only the pie is);
+and the command-line report has a row cap that is being fixed in **v0.13.1**.
 
 ## Roadmap {#roadmap}
 

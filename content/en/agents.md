@@ -237,11 +237,14 @@ What each client sends: Claude Code adds `x-claude-code-session-id`,
 (among others), **but nothing that names a project**; Continue sends only the headers
 you configure.
 
-{{< callout type="info" >}}
-**Available from gateway v0.13.0 (in progress, not released).** The gateway is gaining
-an `X-Llmflow-Project` header, validated against the caller's membership of the
-project. Until it ships, nothing below is accepted by a released gateway.
-{{< /callout >}}
+**Available from gateway v0.13.0.** The gateway reads the project from a header,
+`X-Llmflow-Project` by default (the name is `attribution { project_header }`, and
+`default_project` names the project used without the header; see
+[Project attribution]({{< relref "gateway.md" >}}#attribution)). The value is a project
+name looked up **in the key's own team**; a project that does not exist, is disabled,
+belongs to another team, or is not allowed to the key's owner gets the same generic
+403, "project not allowed for this key". The role must be stored in the gateway (or
+come through SCIM): a role that exists only in an SSO token does not count.
 
 The recommended setup keeps the secret and the project apart. The credential is
 personal, in the user's settings (`apiKeyHelper` above). The project is not a secret:
