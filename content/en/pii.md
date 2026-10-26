@@ -12,7 +12,10 @@ model and masks completions before they reach the client. The package itself onl
 reports what it found and where; the caller decides what to do with it.
 [Repository →](https://github.com/go-llmflow/pii)
 
-This page is written from the repository's README at **v0.1.0**.
+This page is written from the repository's README at **v0.1.0**. **v0.1.0 is
+quadratic on long runs of digits and should be upgraded to v0.2.0 or later**: see
+[Security]({{< relref "security.md" >}}#a9). The README of v0.2.0 also compares pii
+with Microsoft Presidio; this page has not been rewritten from it.
 
 ```sh
 go get github.com/go-llmflow/pii@v0.1.0
