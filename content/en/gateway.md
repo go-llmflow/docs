@@ -13,7 +13,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.15.1.** The versions so far:
+**The current release is v0.16.0.** The versions so far:
 
 | Version | Content |
 | --- | --- |
@@ -36,11 +36,13 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.14.1](https://github.com/go-llmflow/gateway/releases/tag/v0.14.1) | the same commit as v0.13.1 |
 | [v0.15.0](https://github.com/go-llmflow/gateway/releases/tag/v0.15.0) | **Slurm discovery**: a `slurm` block inside a `model` follows vLLM jobs on Slurm (elastic pools). See [Slurm discovery](#slurm-discovery) |
 | [v0.15.1](https://github.com/go-llmflow/gateway/releases/tag/v0.15.1) | the report charts (pies, bars and series) all drawn by go-plot v0.3.0 with plain-text labels; the gateway's own SVG chart engine is removed |
+| [v0.15.2](https://github.com/go-llmflow/gateway/releases/tag/v0.15.2) | **Slurm discovery works with `ha`** (#83), and go-pdfkit v0.20.0: the binary no longer links a widget toolkit (42,110,114 to 39,790,834 bytes, 5.5 % smaller). Open defect 18 is fixed |
+| [v0.16.0](https://github.com/go-llmflow/gateway/releases/tag/v0.16.0) | **mutual TLS on the internal replica channel** (`tls_cert_file`, `tls_key_file`, `tls_ca_file`, `tls_server_name` in the `ha` block) |
 
 **Which tag to take.** v0.13.1 was published **after** v0.14.0, and on a commit that
 already contains the HA code of v0.14.0 (it descends from it); v0.14.1 is the very same
 commit. A tag number going down in time is therefore not a downgrade here. Take
-**v0.14.1 or later** (today v0.15.1), not v0.13.1, so that your version number says
+**v0.14.1 or later** (today v0.16.0), not v0.13.1, so that your version number says
 what the binary holds. The HA code does nothing without an `ha` block.
 
 ```sh
@@ -183,7 +185,7 @@ webhook and/or by e-mail through an SMTP relay.
 The configuration is written in
 [HCL2 native syntax](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md);
 the repository's `examples/gateway.hcl` is parsed by its test suite, so it stays
-valid. This extract was run through `llmflow-gateway check-config` v0.15.1 (with
+valid. This extract was run through `llmflow-gateway check-config` v0.16.0 (with
 the key files present):
 
 ```hcl
@@ -387,7 +389,7 @@ capability and never forwards a client's `Authorization` or `x-api-key`. This is
 legal advice: check your institution's contracts with your DPO.
 
 This block, from the gateway's `examples/anthropic.hcl` with this page's names, passes
-`llmflow-gateway check-config` v0.15.1 (with the key files present, and the
+`llmflow-gateway check-config` v0.16.0 (with the key files present, and the
 organisations, the `b300` pool and the local `llama-3.3-70b` model of that example
 around it):
 
@@ -520,7 +522,7 @@ org "etabA" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.15.1 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.16.0 (with the key files present,
 and a pool and a model around it).
 
 - **What the header may name.** A project **name**, looked up in the key's own team
@@ -556,7 +558,7 @@ true`. Spans carry metadata only (organisation, team, key id, model, pool, prior
 status, token counts, guardrail verdicts), **never a prompt or an answer**.
 
 This block, with the fallbacks and audio settings above, passes
-`llmflow-gateway check-config` v0.15.1 (with the key files present, and
+`llmflow-gateway check-config` v0.16.0 (with the key files present, and
 organisations, pools and models around it):
 
 ```hcl
@@ -612,11 +614,32 @@ ha {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.15.1 (with the key, DSN and secret
+This block passes `llmflow-gateway check-config` v0.16.0 (with the key, DSN and secret
 files present, and organisations, a pool and a model around it). `check-config` also
 checks the block: the postgres store, an advertised IP literal inside `peer_networks`,
 `heartbeat` at most a third of `lease_ttl`, `forward_timeout` at most a heartbeat, and a
 secret of at least 32 bytes.
+
+The optional mutual-TLS lines go in the same `ha` block. This is the README's example
+(the certificate and key from a vault, which needs a `vault` block that is not shown);
+it was **not** run through `check-config` here:
+
+```hcl
+ha {
+  # ... as above, then:
+  tls_cert_file   = "vault:secret/llmflow/ha#cert"  # this replica's
+  tls_key_file    = "vault:secret/llmflow/ha#key"
+  tls_ca_file     = "/etc/llmflow/ha-ca.pem"        # signs every replica
+  tls_server_name = "llmflow-ha"                    # the default
+}
+```
+
+**A check that failed.** When I gave `check-config` v0.16.0 a real generated certificate in
+a plain PEM file, it answered `ha tls_cert_file: secret ... holds more than one line`: the
+secret reader accepts one line only, and a PEM has several. So the README's own
+`/etc/llmflow/ha-ca.pem` example may be refused the same way, and the vault form was not
+tried. The maintainers have not confirmed this yet; until they do, check your own files
+with `check-config` before relying on mutual TLS.
 
 - **One owner per pool.** Each pool's fair share (in-flight counts, reservations, decayed
   usage) is decided by one replica at a time: the holder of the pool's **lease row in
@@ -638,6 +661,16 @@ secret of at least 32 bytes.
   a sliding window per instance (RFC 4303, 3.4.3). The owner's address is read from the
   database and dialled **only inside `peer_networks`**, without redirects, with
   `forward_timeout`.
+- **Mutual TLS on the internal port (since v0.16.0), optional.** With
+  `tls_cert_file`, `tls_key_file` and `tls_ca_file` (secret references, **all three or
+  none**: `check-config` refuses a partial set) the channel runs over mutual TLS 1.3. Each
+  replica presents its certificate, accepts only peers the CA signed, and checks that the
+  server's certificate carries `tls_server_name` (default `llmflow-ha`; replicas are
+  dialled by IP). The HMAC signatures stay: they bind each answer to its request and
+  refuse replays. Tested in the repository: a peer without a certificate, with one from
+  another CA, speaking plain HTTP, or expecting another server name gets nothing, even
+  though it holds the HMAC secret. The cost (a handshake per kept-alive connection, then
+  AES-GCM on bodies of a few hundred bytes) is **not measured yet**.
 - **Failover.** Every replica reports its live grants to the owner each `heartbeat`. A new
   owner (epoch + 1) restores the decayed usage the previous one persisted every
   `usage_persist`, adopts the grants the surviving replicas report, and counts the
@@ -675,10 +708,10 @@ yet (the machine's load was above the gate's limit); a Go benchmark compares a s
 replica, the owner and a forwarded admission. **Per-key rate limits** (`rpm`, `tpm`,
 `max_inflight`) are still counted **per replica**: N replicas allow up to N times the
 limit. The fencing token is checked by PostgreSQL and by the replicas, not by vLLM, so a
-decision an owner made just before a long pause can still reach vLLM. And the **internal
-channel is authenticated but not encrypted**: keep it on a private network (the
-maintainers say this is being addressed). **An `ha` block cannot be combined with
-[Slurm discovery](#slurm-discovery) yet**; `check-config` refuses the pair.
+decision an owner made just before a long pause can still reach vLLM. Without the `tls_*`
+files the internal channel is **authenticated but not encrypted**: keep it on a private
+network, or set them (see above). Since v0.15.2 an `ha` block **can** be combined with
+[Slurm discovery](#slurm-discovery).
 
 ## Slurm discovery: vLLM instances as Slurm jobs (since v0.15.0) {#slurm-discovery}
 
@@ -713,7 +746,7 @@ model "llama" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.15.1 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.16.0 (with the key files present,
 and organisations around it).
 
 - **Convention.** A job serves model `M` on port `P` when its name (or else its comment)
@@ -744,6 +777,24 @@ and organisations around it).
   instance** until a poll succeeds. Healthy members are never dropped because of an outage.
 - **Metrics.** `llmflow_pool_capacity`, `llmflow_slurm_polls_total{outcome}`,
   `llmflow_slurm_last_success_timestamp_seconds`, `llmflow_slurm_rejected_jobs_total`.
+- **With an `ha` block (since v0.15.2).** Every replica runs its **own** discovery and
+  health checks, for its own routing: publishing the healthy set through PostgreSQL was
+  not chosen, because it would tie every replica's routing to the owner's liveness and to
+  PostgreSQL, and because what is healthy depends on a replica's network path to the
+  instance. **Only the pool's owner's view sets C.** It decides with it and publishes C
+  and the integer reservations with the lease's epoch (`llmflow_pool_capacity` shows the
+  decided C on every replica); a replica that sees fewer instances still routes only to
+  those it sees. A replica takes a pool only after its discovery has read the members once;
+  until then requests are admitted at the lowest priority (or refused under
+  `on_owner_unreachable = "reject"`). An owner whose slurmrestd stays unreadable past
+  `stale_after` **yields**: a replica that still reads the jobs takes the lease (epoch + 1)
+  and stays quiet for one `lease_ttl`, until the previous owner's validity has surely
+  ended. If no replica reads slurmrestd, the owner keeps the pool with its last known
+  members. Chaos tests with a real PostgreSQL: the owner killed while a job joins (the
+  survivor owns with the new C at epoch + 1); slurmrestd lost by the owner only (handover
+  after **1.2 s**, never two owners in about 950 samples, and the test fails without the
+  quiet period); two replicas that disagree (each routes to what it sees, the fair share
+  is the owner's). The sum of the reservations never exceeded C in any sample.
 - **The token is read at start only.** Issue it with `scontrol token username=svc_llm
   lifespan=...` and pick a lifespan longer than your restart cycle: the default is 1800 s.
   Once it has expired, polls fail and the fail-closed rule applies. slurmrestd needs
@@ -826,7 +877,7 @@ check use `llmflow-gateway audit verify` with a public key kept elsewhere (see
 server in front of the tool servers of the configuration. It speaks the Streamable
 HTTP binding of revision **2026-07-28** and, for older clients, the initialize
 handshake of **2025-11-25** (and 2025-06-18, 2025-03-26). A client authenticates
-with its virtual key. This block passes `llmflow-gateway check-config` v0.15.1
+with its virtual key. This block passes `llmflow-gateway check-config` v0.16.0
 (with the key files present, and an `sso` block, organisations, a pool and a model
 around it):
 
@@ -1062,7 +1113,7 @@ PostgreSQL. The estimate undercounts tool-call and reasoning tokens.
 
 ## Limitations {#limitations}
 
-Open defects of v0.15.1, as the repository lists them:
+Open defects of v0.16.0, as the repository lists them:
 
 1. **Rate limits and the key cache are per process.** Since v0.14.0 the fair-share
    state is shared between replicas **with an `ha` block** (see
@@ -1074,7 +1125,8 @@ Open defects of v0.15.1, as the repository lists them:
    `lease_ttl`) requests are admitted at the lowest priority without an owner's
    decision; a new owner's safety margin is the in-flight count persisted up to
    `usage_persist` earlier; the fencing token is checked by PostgreSQL and by the
-   replicas, not by vLLM. The internal channel is authenticated, not encrypted.
+   replicas, not by vLLM. Without the `tls_*` files (mutual TLS since v0.16.0) the
+   internal channel is authenticated, not encrypted.
 2. **Budgets lag.** The cost is known when a request ends, so a burst of long
    requests can overspend by what is in flight. Several gateways see each other's
    spend only at their next refresh.
@@ -1131,11 +1183,13 @@ Open defects of v0.15.1, as the repository lists them:
 17. **The performance of v0.6 and v0.7 is not measured yet.** The
     [overhead figures](#overhead) are those of v0.1.0; an independent benchmark of
     the current release is waiting for a quiet machine.
-18. **The PDF export links more than it uses.** go-pdfkit's root package imports
-    go-widgets/toolkit, so the gateway binary also carries code the export never
-    reaches: 33.8 MB without the exports, 38.0 MB with them (darwin/arm64,
-    `CGO_ENABLED=0 -trimpath`). The fix belongs upstream; until then `govulncheck`
-    also scans those modules.
+18. ~~**The PDF export links more than it uses.**~~ **Fixed in v0.15.2.** go-pdfkit
+    v0.20.0 moved its widget bridge to the subpackage `pdfkit/widget`, so the gateway no
+    longer links go-widgets/toolkit and the code behind it. The binary went from
+    42,110,114 to 39,790,834 bytes, 5.5 % smaller (darwin/arm64,
+    `CGO_ENABLED=0 -trimpath`, the same tree but for the bump; the README's
+    measurement on that commit). The library is documented at
+    [go-pdfkit](https://go-pdfkit.github.io/docs/).
 
 ## Roadmap {#roadmap}
 
