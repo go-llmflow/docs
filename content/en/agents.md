@@ -72,15 +72,170 @@ curl https://llm.example.org/v1/messages \
        "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
-How a given agent is told its base URL and its key (an environment variable, a
-settings file) is that agent's own configuration, which this site does not
-reproduce: read it in the agent's documentation.
+How a given agent is told its base URL and its key is that agent's own configuration.
+[Claude Code](#claude-code) is documented below, from Anthropic's pages; for any other
+agent, read its documentation, which this site has not opened.
 
 What the gateway guarantees on this route: guardrails cover `system`, text and
 `thinking` blocks, `tool_result` content and the strings inside `tool_use` inputs;
 guarded streams pass through an Anthropic event filter; error bodies carry
 `"type": "error"`; `/v1/messages/count_tokens` is not routed. Accounting counts
 cached tokens as vLLM reports them.
+
+## Claude Code {#claude-code}
+
+Everything below is from Anthropic's pages
+[LLM gateways](https://code.claude.com/docs/en/llm-gateway),
+[connect Claude Code to an LLM gateway](https://code.claude.com/docs/en/llm-gateway-connect),
+the [gateway compatibility guide](https://code.claude.com/docs/en/llm-gateway-protocol)
+and [legal and compliance](https://code.claude.com/docs/en/legal-and-compliance),
+read on 2026-10-26. Claude Code versions change; check them.
+
+{{< callout type="warning" >}}
+**Which models, said plainly.** Anthropic's page says it "doesn't support routing
+Claude Code to non-Claude models through any gateway". Pointing Claude Code at this
+gateway's `/v1/messages` and a **local vLLM model** is technically possible, since
+the route exists, but it is **unsupported by Anthropic**. The supported path is
+**Claude models** through the gateway's upcoming opt-in `anthropic` provider (gateway
+v0.12.0, in progress, not released), billed to the organisation's own API account. Do
+not rely on either until you have read the gateway's release notes.
+{{< /callout >}}
+
+### The base URL and the credential {#claude-code-credential}
+
+`ANTHROPIC_BASE_URL` points Claude Code at the gateway; Claude Code then calls
+`<base URL>/v1/messages`. The credential comes from one of three places, and each
+sends it in a different header:
+
+| Credential | Sent as |
+| --- | --- |
+| `ANTHROPIC_AUTH_TOKEN` | `Authorization: Bearer` |
+| `ANTHROPIC_API_KEY` | `x-api-key` |
+| `apiKeyHelper` | both headers |
+
+The gateway reads the virtual key as a bearer token (above), so `ANTHROPIC_AUTH_TOKEN`
+or `apiKeyHelper` fits it.
+
+**Recommended: `apiKeyHelper`, reading the key from a file** of mode 0600, so that the
+key is never in an environment variable or in a file that is committed. The helper is
+a command that prints the credential and nothing else (Claude Code caches its output
+for five minutes by default; `CLAUDE_CODE_API_KEY_HELPER_TTL_MS` changes that). A
+one-line script:
+
+```bash
+#!/bin/bash
+cat ~/.config/llmflow/key
+```
+
+with `chmod 600 ~/.config/llmflow/key`, referenced from the **user** settings file,
+`~/.claude/settings.json` (`%USERPROFILE%\.claude\settings.json` on Windows):
+
+```json
+{
+  "apiKeyHelper": "~/bin/llmflow-key.sh",
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://llm.example.org",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  }
+}
+```
+
+**Never put a credential in a project's `.claude/settings.json`**: it is committed and
+shared with everyone who clones the repository. A per-project credential file is
+`.claude/settings.local.json`, which Claude Code adds to your global gitignore when it
+saves a setting there; if you create it by hand, add it to your gitignore first.
+
+`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` keeps background traffic off other hosts
+(version checks, telemetry, release notes). It also **disables auto-updates**, so plan
+another update path.
+
+For the **VS Code extension**, Anthropic's page puts the gateway variables in
+`claudeCode.environmentVariables`, in VS Code's own user settings (the command
+**Preferences: Open User Settings (JSON)**). It says the extension checks credentials
+from this setting before launching, so it is the reliable place for the credential,
+and that values in `~/.claude/settings.json` reach the spawned process but not the
+extension's own login check:
+
+```json
+{
+  "claudeCode.environmentVariables": [
+    { "name": "ANTHROPIC_BASE_URL", "value": "https://llm.example.org" }
+  ]
+}
+```
+
+Anthropic's own example puts `ANTHROPIC_AUTH_TOKEN` there too, which means the key
+sits as plain text in that file. That is a trade-off against the recommendation above,
+and this page has not verified whether an `apiKeyHelper` alone satisfies the
+extension's login check; test it with `/status` before relying on it.
+
+Run `/status` in Claude Code: an `Anthropic base URL` line, and an `apiKeyHelper` line
+naming the credential, confirm that the gateway is in use.
+
+**Pinning an organisation to the gateway.** Managed settings with
+`allowedProviders: ["customEndpoint"]` and the gateway's `ANTHROPIC_BASE_URL` in the
+file's `env` block make Claude Code refuse any other destination (Claude Code v2.1.285
+or later). `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1` adds the gateway's models to
+the `/model` picker.
+
+### Subscriptions {#claude-code-subscriptions}
+
+While a gateway credential or an `apiKeyHelper` is active, requests carry that
+credential **instead of** a claude.ai subscription login, and the subscription's
+limits do not apply; the traffic is billed per token to whoever owns the credential the
+gateway forwards. **Pooling Pro or Max subscriptions behind a gateway is not allowed**:
+Anthropic's [legal and compliance](https://code.claude.com/docs/en/legal-and-compliance)
+page says it does not permit routing requests "through Free, Pro, or Max plan
+credentials on behalf of their users", and customers "may not pay for, resell, or
+intermediate Claude usage on their end users' behalf". Read that page, and the
+consumer terms it cites, before planning any shared use.
+
+### Attributing requests to a project {#claude-code-project}
+
+What each client sends: Claude Code adds `x-claude-code-session-id`,
+`x-claude-code-agent-id`, `x-claude-code-prompt-id` and `x-claude-code-request-class`
+(among others), **but nothing that names a project**; Continue sends only the headers
+you configure.
+
+{{< callout type="info" >}}
+**Available from gateway v0.13.0 (in progress, not released).** The gateway is gaining
+an `X-Llmflow-Project` header, validated against the caller's membership of the
+project. Until it ships, nothing below is accepted by a released gateway.
+{{< /callout >}}
+
+The recommended setup keeps the secret and the project apart. The credential is
+personal, in the user's settings (`apiKeyHelper` above). The project is not a secret:
+it goes in the repository's committed `.claude/settings.json`:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_CUSTOM_HEADERS": "X-Llmflow-Project: my-project"
+  }
+}
+```
+
+`ANTHROPIC_CUSTOM_HEADERS` takes one `Name: Value` pair per line, with `\n` between
+pairs in a JSON string. Anthropic notes that headers like these count as
+[headers that need approval](https://code.claude.com/docs/en/server-managed-settings.md#environment-variables-and-the-approval-dialog),
+and that when they come from a project settings file Claude Code applies them under
+[the rules for when it applies `env` values](https://code.claude.com/docs/en/settings-reference#when-claude-code-applies-env-values):
+the user is asked to approve them.
+
+For Continue, the header is set per model entry, with `requestOptions.headers`
+([Continue's reference](https://docs.continue.dev/reference)):
+
+```yaml
+models:
+  - name: Large model (B300)
+    provider: openai
+    model: large-model
+    apiBase: https://llm.example.org/v1
+    apiKey: ${{ secrets.B300_GATEWAY_KEY }}
+    requestOptions:
+      headers:
+        X-Llmflow-Project: my-project
+```
 
 ## Limits to keep in mind {#limits}
 
