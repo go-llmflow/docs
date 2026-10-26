@@ -13,7 +13,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.9.0.** The versions so far:
+**The current release is v0.10.0.** The versions so far:
 
 | Version | Content |
 | --- | --- |
@@ -26,6 +26,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.7.0](https://github.com/go-llmflow/gateway/releases/tag/v0.7.0) | **more endpoints (issue #38)**: stateless `/v1/responses`, the Anthropic `/v1/messages`, rerank, tokenization, audio transcription, model fallbacks, OpenTelemetry traces. See [More endpoints](#more-endpoints) and [Coding agents]({{< relref "agents.md" >}}) |
 | [v0.8.0](https://github.com/go-llmflow/gateway/releases/tag/v0.8.0) | **admin web UI and MCP gateway (issue #38, items 6 and 7)**. See [Admin web UI](#admin-ui) and [MCP gateway](#mcp) |
 | [v0.9.0](https://github.com/go-llmflow/gateway/releases/tag/v0.9.0) | **security audit and chaos release** (2026-10-26): findings A1 to A9 fixed, among them a high one (A3). See [Security]({{< relref "security.md" >}}) |
+| [v0.10.0](https://github.com/go-llmflow/gateway/releases/tag/v0.10.0) | **durable accounting. Breaking: `store.spool_dir` is mandatory with the postgres store.** `sso.min_refresh`; dependencies at the go 1.27.3 floor. See [Upgrading to v0.10.0](#upgrading-v0100) |
 
 ```sh
 go install github.com/go-llmflow/gateway/cmd/llmflow-gateway@latest
@@ -50,6 +51,32 @@ The binary `llmflow-gateway` has four subcommands: `serve`, `export`,
 - **From v0.2 to v0.3.** `cache_salt_key_file` is mandatory unless
   `cache_isolation = "none"`. The first start with a new key, and every key
   rotation, leaves every tenant with a cold prefix cache.
+- **From v0.9 to v0.10.** `store.spool_dir` is mandatory with the postgres store;
+  see the next heading.
+
+### Upgrading to v0.10.0 {#upgrading-v0100}
+
+**`store.spool_dir` is mandatory with the postgres store: without it the gateway
+refuses to start.** It is the directory
+  of the durable accounting spool: every batch of usage records is appended to a
+  file there and fsync'd before it is inserted, so that records survive a
+  PostgreSQL outage or a crash, within the bounds listed under
+  [Limitations](#limitations) (the gateway's README, "Durable accounting"). The
+  directory is created with mode 0700 and refused if group- or world-writable; files
+  are mode 0600. `store.spool_max_bytes` caps it (256 MiB per process by default).
+  Metrics: `llmflow_accounting_spooled`, `llmflow_accounting_replayed_total`; alert
+  `accounting_records_lost`. A process that dies leaves its file, and the next
+  process on the directory adopts and stores it. Also new: `sso.min_refresh` (at
+  least 5 s, as for `jwt`).
+
+```hcl
+store {
+  kind            = "postgres"
+  dsn_file        = "/etc/llmflow/pg.dsn"
+  spool_dir       = "/var/lib/llmflow/spool"
+  spool_max_bytes = 268435456
+}
+```
 
 ## Architecture {#architecture}
 
@@ -140,7 +167,7 @@ webhook and/or by e-mail through an SMTP relay.
 The configuration is written in
 [HCL2 native syntax](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md);
 the repository's `examples/gateway.hcl` is parsed by its test suite, so it stays
-valid. This extract was run through `llmflow-gateway check-config` v0.9.0 (with
+valid. This extract was run through `llmflow-gateway check-config` v0.10.0 (with
 the key files present):
 
 ```hcl
@@ -182,7 +209,7 @@ model "llama-3.3-70b" {
 | `org "<name>" { share, team "<name>" {} ... }` | an organisation (institution) with the fraction of every pool reserved for it (sum at most 1) and the teams declared under it; team names are global |
 | `pool "<name>" { capacity }` | `C`, the sustainable concurrency of the pool (1 to 1048576) |
 | `model "<name>" { ... }` | client model name; `upstream_model`, `pool`, `class` (`interactive` or `batch`), `key_file`, `cost { input_per_mtok, output_per_mtok, cached_per_mtok }` in GPU-hours per million tokens, and `upstream "<name>" { base_url, key_file }` blocks |
-| `store { ... }` | `kind` (`memory` or `postgres`), `dsn_file`, `fail_closed` (default true), `queue_size`, `batch_size` |
+| `store { ... }` | `kind` (`memory` or `postgres`), `dsn_file`, `spool_dir` (**required with postgres**, see [Upgrading to v0.10.0](#upgrading-v0100)), `spool_max_bytes` (default 256 MiB), `fail_closed` (default true), `queue_size`, `batch_size` |
 | `fairshare { half_life }` | usage decay half-life (default `"168h"`) |
 | `limits { ... }`, `health { ... }` | body and header sizes, timeouts, maximum request duration and response size; health-check interval, timeout, cooldown and path |
 | `tags { header, allowed }` | the request header clients may tag requests with, and the allowed tags |
@@ -308,7 +335,7 @@ true`. Spans carry metadata only (organisation, team, key id, model, pool, prior
 status, token counts, guardrail verdicts), **never a prompt or an answer**.
 
 This block, with the fallbacks and audio settings above, passes
-`llmflow-gateway check-config` v0.9.0 (with the key files present, and
+`llmflow-gateway check-config` v0.10.0 (with the key files present, and
 organisations, pools and models around it):
 
 ```hcl
@@ -375,7 +402,7 @@ check use `llmflow-gateway audit verify` with a public key kept elsewhere (see
 server in front of the tool servers of the configuration. It speaks the Streamable
 HTTP binding of revision **2026-07-28** and, for older clients, the initialize
 handshake of **2025-11-25** (and 2025-06-18, 2025-03-26). A client authenticates
-with its virtual key. This block passes `llmflow-gateway check-config` v0.9.0
+with its virtual key. This block passes `llmflow-gateway check-config` v0.10.0
 (with the key files present, and an `sso` block, organisations, a pool and a model
 around it):
 
@@ -598,7 +625,8 @@ full account (method, findings A1 to A9, chaos results, residual risks) is on th
   now start together on an empty database. Chaos tests cover PostgreSQL down,
   partitioned and restarted, an upstream restart, a key rotation under load, two
   replicas, and a clock stepping back. The loss of usage records during an
-  accounting outage stays an open defect (limitation 6).
+  accounting outage was an open defect (limitation 6), fixed in v0.10.0 by the
+  durable accounting spool.
 
 ### Aborted requests {#aborted}
 
@@ -610,7 +638,7 @@ PostgreSQL. The estimate undercounts tool-call and reasoning tokens.
 
 ## Limitations {#limitations}
 
-Open defects of v0.9.0 (re-checked in the audit of 2026-10-26), as the repository lists them:
+Open defects of v0.10.0, as the repository lists them:
 
 1. **State is per process.** In-flight counts, rate limits and the key cache live
    in memory: run **one gateway replica per pool**. Several replicas would each
@@ -624,9 +652,13 @@ Open defects of v0.9.0 (re-checked in the audit of 2026-10-26), as the repositor
    their own. vLLM has no API to re-prioritise a queued request.
 4. **Aborted requests are charged with an estimate** (see above).
 5. **Prefix-cache isolation is per scope, not absolute** (see above).
-6. **Accounting can drop records** when its queue is full or a batch write fails
-   twice (both are counted in metrics); budgets count the cost until the next
-   refresh only.
+6. **Accounting drops records only when its bounds are reached.** A record is
+   dropped when the in-memory queue (`queue_size`) is full, and lost when the
+   durable spool (`spool_max_bytes`) is full or cannot be written and the store
+   refuses it too (counted in `llmflow_accounting_failed_total`, alerted as
+   `accounting_records_lost`). A record still in the queue when the process dies (at
+   most about 1 s of traffic) is lost. Everything that reached the spool survives a
+   store outage and a crash. Budgets count the cost until the next refresh only.
 7. **No TLS** in the gateway: put it behind a TLS proxy. The **admin API shares
    the client listener**. `/v1/responses` is served
    statelessly only (see [above](#responses)).
