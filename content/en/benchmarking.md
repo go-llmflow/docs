@@ -104,6 +104,22 @@ The per-run p50 lines show whether the runs agree; the last table is the result.
 Report it with the load range of the kept runs, the machine, and the `GOMAXPROCS`
 of each gateway.
 
+## Dated results {#results}
+
+Overhead is the paired difference against a direct call to the same upstream
+(p50 unless stated). Each result is tied to its date and protocol; none is a
+promise for another machine, another load or another request.
+
+| Date | Targets | Request | Overhead p50 | Protocol and load |
+| --- | --- | --- | --- | --- |
+| 2026-10-23 | LiteLLM 1.106.2 (one process, no database); llmflow v0.1.0 (`GOMAXPROCS=1`, memory store) | small, non-streaming | LiteLLM **4.86 ms**; llmflow **117 us** (p90 5.26 ms and 161 us, p99 6.21 ms and 239 us) | 8 kept runs of 2,000 paired rounds (16,000), each started at a 1-minute load of 4 or less and discarded if it ended above; kept loads 3.30 to 3.94; one earlier long run discarded (load rose to 9.44). No streaming, no concurrency, no database write |
+| 2026-10-26, 06:26 | llmflow v0.1.0, v0.6.0, and v0.6.0 with the `hide_secrets` and `pii` guardrails | 2 KB prompt, non-streaming | v0.1.0 **97 us**; v0.6.0 **111 us**; v0.6.0 with `hide_secrets` and `pii` **599 us** | `gwbench` as described above, load gate 4; the load range, the number of runs and the machine of this run are not recorded on this page |
+
+What the second row says: the guardrails that scan a 2 KB prompt (secrets and
+personal data) cost about 490 us more than the same release without them, on that
+request. It is a measurement of one request shape. Guarded streaming, concurrency and a database write are not measured by either
+row.
+
 ## fakevllm {#fakevllm}
 
 ```sh
