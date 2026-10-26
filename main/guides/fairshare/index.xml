@@ -1120,6 +1120,25 @@ dedicated model (an instance of a few GPUs, or MIG) and set an &lt;code&gt;rpm_l
 key, or it will eat the institution&amp;rsquo;s quota.&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;contextLength&lt;/code&gt; must not exceed the vLLM instance&amp;rsquo;s &lt;code&gt;--max-model-len&lt;/code&gt;.&lt;/li&gt;
 &lt;/ul&gt;
+&lt;h2 data-hextra-search-id="claude-code"&gt;Code assistant: Claude Code&lt;span class="hx:absolute hx:-mt-20" id="claude-code"&gt;&lt;/span&gt;
+&lt;a href="#claude-code" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Claude Code can also talk to the gateway, through &lt;code&gt;ANTHROPIC_BASE_URL&lt;/code&gt;, with the
+virtual key as the credential. The full, sourced instructions are on the
+&lt;a href="https://go-llmflow.github.io/docs/main/agents/#claude-code"&gt;Coding agents&lt;/a&gt; page; the short version:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Models.&lt;/strong&gt; Anthropic does not support routing Claude Code to non-Claude models
+through any gateway, so Claude Code against the local vLLM models of this cluster is
+possible but &lt;strong&gt;unsupported by Anthropic&lt;/strong&gt;. The supported path is Claude models through
+the gateway&amp;rsquo;s upcoming &lt;code&gt;anthropic&lt;/code&gt; provider (gateway v0.12.0, in progress), billed to
+the organisation&amp;rsquo;s API account. Pooling Pro or Max subscriptions is not allowed.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Credential.&lt;/strong&gt; Use &lt;code&gt;apiKeyHelper&lt;/code&gt; in &lt;code&gt;~/.claude/settings.json&lt;/code&gt;, a command that prints
+the key from a file of mode 0600. Never put the key in the project&amp;rsquo;s committed
+&lt;code&gt;.claude/settings.json&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;VS Code.&lt;/strong&gt; The extension takes its gateway variables from
+&lt;code&gt;claudeCode.environmentVariables&lt;/code&gt; in VS Code&amp;rsquo;s user settings.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Project.&lt;/strong&gt; From gateway v0.13.0 (in progress), a project can be named with an
+&lt;code&gt;X-Llmflow-Project&lt;/code&gt; header, set in the repository&amp;rsquo;s &lt;code&gt;.claude/settings.json&lt;/code&gt; as
+&lt;code&gt;ANTHROPIC_CUSTOM_HEADERS&lt;/code&gt;, or with &lt;code&gt;requestOptions.headers&lt;/code&gt; in Continue.&lt;/li&gt;
+&lt;/ul&gt;
 &lt;h2 data-hextra-search-id="remote-ssh"&gt;Development and jobs: Remote-SSH&lt;span class="hx:absolute hx:-mt-20" id="remote-ssh"&gt;&lt;/span&gt;
 &lt;a href="#remote-ssh" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Remote-SSH reads the user&amp;rsquo;s &lt;code&gt;~/.ssh/config&lt;/code&gt; [18]. Target the &lt;strong&gt;login node&lt;/strong&gt;, never
 a GPU node: GPU nodes are reached only through a Slurm job, otherwise the work
