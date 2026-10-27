@@ -634,9 +634,13 @@ ha {
 }
 ```
 
-This form is **validated by `check-config` v0.16.1 with real PEM files**: an EC P-256 CA
-and a replica certificate with the DNS name `llmflow-ha`, generated for the test, as
-multi-line PEMs (the key file at mode 0600, which the loader requires). The
+This form is **tested live**: bench v0.6.0's
+[`TestHAMutualTLSLive`](https://github.com/go-llmflow/bench/blob/v0.6.0/e2e/ha_mtls_test.go)
+(see [Benchmarking]({{< relref "benchmarking.md" >}}#verified-ha-mtls)) ran on 2026-10-27
+against PostgreSQL 18.6 with two gateway v0.16.1 processes configured from PEM files
+(ECDSA and Ed25519 leaves, SAN `llmflow-ha`, key files at mode 0600, which the loader
+requires): 8 of 8 admissions sent to the non-owner were forwarded to the owner over mTLS.
+`check-config` v0.16.1 also accepts such files. The
 repository's README also shows the certificate and key as `vault:` references, such as
 `vault:secret/llmflow/ha#cert`; the loader accepts both a file path and a `vault:`
 reference, and that form needs a `vault` block which is not shown here and was not run.
@@ -644,12 +648,15 @@ The certificate file may carry intermediates after the leaf, the CA file may bun
 several CAs, and `check-config` refuses a certificate outside its validity period.
 
 **Use v0.16.1 or later for mutual TLS.** v0.16.0 read these three values with the
-one-line secret reader and **rejected every multi-line PEM file**: `check-config` v0.16.1
-answered `ha tls_cert_file: secret ... holds more than one line` for a real certificate.
-Fixed in v0.16.1 (the PEM-aware loader). What this page has verified is
-`check-config` acceptance of real files; I have **not** seen a live handshake between two
-replicas, and the repository's own tests of refused peers (no certificate, another CA,
-plain HTTP, another server name) are the repository's, not re-run here.
+one-line secret reader and **rejected every multi-line PEM file**: `check-config` v0.16.0
+answered `ha tls_cert_file: secret ... holds more than one line` for a real certificate,
+and the live test fails against a v0.16.0 binary for that reason. Fixed in v0.16.1 (the
+PEM-aware loader). The live test's **control**: a replica with a certificate from another
+CA gets no answer, and its 3 requests are admitted without an owner, at a borrowing
+priority. In the positive run `llmflow_ha_unowned_total` stayed at 0 and the owner's
+`llmflow_inflight` reached 3. An in-process equivalent in the gateway repository,
+`TestHAMutualTLSProcesses`, runs when `LLMFLOW_TEST_PG_DSN` is set. This is one pair of
+replicas on one machine; it does not measure the latency of the channel.
 
 - **One owner per pool.** Each pool's fair share (in-flight counts, reservations, decayed
   usage) is decided by one replica at a time: the holder of the pool's **lease row in

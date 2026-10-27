@@ -11,8 +11,9 @@ command-line tools, in pure Go, for measuring LLM gateways such as the
 **adds**, and `fakevllm` is the upstream it is measured against.
 [Repository →](https://github.com/go-llmflow/bench)
 
-This page is written from the repository's README at **v0.5.0** (and v0.2.0 for the
-parts that did not change). v0.5.0 adds a fake slurmrestd and the Slurm end-to-end test
+This page is written from the repository's README at **v0.6.0** (and v0.2.0 for the
+parts that did not change). v0.6.0 adds a live test of the HA mutual TLS (see
+[HA mutual TLS](#verified-ha-mtls)). v0.5.0 adds a fake slurmrestd and the Slurm end-to-end test
 (see [Slurm discovery](#verified-slurm)). v0.4.0 teaches `fakevllm` to mimic Anthropic's API and adds
 the `e2e/anthropic` suite (see [fakevllm](#fakevllm) and
 [Anthropic upstream](#verified-anthropic)); v0.3.0 added the
@@ -237,6 +238,35 @@ second test, `TestGatewayInFrontOfRealAnthropic`, runs only when
 `BENCH_ANTHROPIC_KEY_FILE` names a file holding a key (the model is
 `BENCH_ANTHROPIC_MODEL`, default `claude-haiku-5-5`). **It was not run for v0.4.0, since
 no key was available.**
+
+### HA mutual TLS between two replicas {#verified-ha-mtls}
+
+`TestHAMutualTLSLive` (`e2e/ha_mtls_test.go`, bench v0.6.0) checks that two gateway
+replicas complete a mutual TLS 1.3 handshake on the HA internal port with certificate
+**files** (multi-line PEM): the path that gateway v0.16.0 broke and v0.16.1 fixed. It needs
+the gateway binary (`BENCH_GATEWAY_BIN`, v0.16.1 or later) and docker for a throw-away
+PostgreSQL (`BENCH_PG_IMAGE`, default `postgres:18`); no vLLM (the upstream is a fake). It
+skips, with the reason, when docker or the image is unavailable.
+
+1. A CA and two replica certificates (SAN `llmflow-ha`; ECDSA for A, Ed25519 for B) are
+   generated and written as PEM files, keys at mode 0600; `check-config` accepts them.
+2. Replica A takes the pool's lease; replica B starts.
+3. Requests go through B, the non-owner: all are 200 at priority 0, `llmflow_ha_unowned_total`
+   stays 0, and with three requests held at the upstream the owner's `llmflow_inflight`
+   reads 3: the grants crossed the mTLS channel.
+4. **Control.** B restarts with a certificate another CA signed. It loads, but the owner
+   does not answer: its requests are admitted without an owner (`llmflow_ha_unowned_total`
+   3, priority not 0). Without this, step 3 would prove nothing about the handshake.
+
+```sh
+go install github.com/go-llmflow/gateway/cmd/llmflow-gateway@v0.16.1
+BENCH_GATEWAY_BIN=$(go env GOPATH)/bin/llmflow-gateway go test -v -run TestHAMutualTLSLive ./e2e
+```
+
+Run on 2026-10-27 with gateway v0.16.1 and PostgreSQL 18.6: it passes (8 of 8 admissions
+forwarded). With a v0.16.0 binary it fails at `check-config` ("holds more than one line").
+The gateway repository has an in-process equivalent, `TestHAMutualTLSProcesses`, gated on
+`LLMFLOW_TEST_PG_DSN`. It is two processes on one machine, not a latency measurement.
 
 ### Slurm discovery {#verified-slurm}
 
