@@ -131,7 +131,7 @@ params:
     displayDescription: true
     # "Created on ... by ... / Modified on ... by ..." at the foot of each page:
     # creation from data/pagehistory.json (the CI writes it with the theme's
-    # scripts/page-history.sh, which needs the full history); modification from
+    # cmd/pagehistory, which needs the full history); modification from
     # git (enableGitInfo).
     history: true
   editURL:
