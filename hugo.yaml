@@ -48,22 +48,92 @@ cascade:
     params:
       type: docs
 
+module:
+  # The mark and the favicon are the landing's own files (submodule branding/ =
+  # go-llmflow/go-llmflow.github.io), mounted under /images/brand/ instead of
+  # being copied here: one source for the organisation's look.
+  mounts:
+    - source: static
+      target: static
+    - source: assets
+      target: assets
+    - source: branding/static/img
+      target: static/images/brand
+      files: ["logo.svg"]
+    - source: branding/static
+      target: static/images/brand
+      files: ["favicon.svg"]
+
+# Navbar, left to right: version, theme, search, sources. The version selector
+# is the fork's own component (themes/hextra/layouts/_partials/components/
+# version-select.html): it reads versions.json, which pagespublish writes.
+menu:
+  main:
+    - name: Version
+      weight: 3
+      params:
+        type: partial
+        partial: components/version-select.html
+    - name: Theme
+      weight: 4
+      params:
+        type: theme-toggle
+        combo: true
+    - name: Search
+      weight: 5
+      params:
+        type: search
+    - name: GitHub
+      url: https://github.com/go-llmflow
+      weight: 6
+      params:
+        icon: github
+
 params:
   docs:
-    version: "main"
+    # The gateway release these pages describe (v0.16.1 -> documentation
+    # version 0.16, published at /docs/0.16/). The CI reads it here.
+    version: "v0.16.1"
+  versions:
+    # What the version selector shows for the "main" build (development icon).
+    development: "main"
   description: "go-llmflow: high-performance LLM inference and serving in Go. The gateway (an OpenAI-compatible gateway in front of vLLM with fair-share and borrowing) and a guide to sharing a co-owned GPU cluster."
   navbar:
     displayTitle: true
-    displayLogo: false
+    displayLogo: true
+    logo:
+      path: images/brand/logo.svg
+      dark: images/brand/logo.svg
+      width: 32
+      height: 32
+      # Related sites, opened from the chevron beside the title.
+      menu:
+        - name: go-llmflow
+          url: https://go-llmflow.github.io/
+          logo: images/brand/logo.svg
   theme:
     default: system
-    displayToggle: true
+    # The theme toggle is in the navbar (menu above).
+    displayToggle: false
+    # Dark Reader would darken the light theme itself.
+    darkreaderLock: true
   footer:
     enable: true
     displayCopyright: false
     displayPoweredBy: false
+  displayUpdatedDate: true
+  dateFormat: "January 2, 2006"
+  toc:
+    displayTags: true
   page:
     width: normal
+    # The front matter description as a subtitle under the title.
+    displayDescription: true
+    # "Created on ... by ... / Modified on ... by ..." at the foot of each page:
+    # creation from data/pagehistory.json (the CI writes it with the theme's
+    # scripts/page-history.sh, which needs the full history); modification from
+    # git (enableGitInfo).
+    history: true
   editURL:
     enable: true
     base: "https://github.com/go-llmflow/docs/edit/main/content/en"

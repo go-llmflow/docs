@@ -1,3 +1,6 @@
 [submodule "themes/hextra"]
 	path = themes/hextra
 	url = https://github.com/tannevaled/hextra.git
+[submodule "branding"]
+	path = branding
+	url = https://github.com/go-llmflow/go-llmflow.github.io.git

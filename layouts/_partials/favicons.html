@@ -1,0 +1,6 @@
+{{- /* The favicon is the organisation's mark (submodule branding/, mounted under
+  /images/brand/ by hugo.yaml) rather than a file copied into static/. Replaces
+  the theme's favicons.html, which expects several formats at the root; the
+  landing ships the SVG only. id="favicon-svg" is what the theme's light/dark
+  switch looks for. */ -}}
+<link rel="icon" href="{{ "images/brand/favicon.svg" | relURL }}" type="image/svg+xml" id="favicon-svg" />
