@@ -10,7 +10,7 @@ architecture as the gateway's README gives it and links to the pages that hold t
 details; it adds no measurement and no recommendation of its own. What the READMEs do not
 say is marked **open**, not invented.
 
-Written from the README of gateway **v0.16.1** and of bench v0.5.0.
+Written from the README of gateway **v0.16.1** and of bench v0.6.0.
 
 ## The architecture {#architecture}
 
@@ -149,9 +149,10 @@ above.)
 `tls_ca_file` (all three or none), PEM files or `vault:` references, with
 `tls_server_name` naming the DNS name in each replica's certificate. **Use v0.16.1 or
 later**: v0.16.0 rejected every multi-line PEM file. With v0.16.1, `check-config`
-accepts real PEM files (an EC P-256 CA and a certificate for `llmflow-ha`, tested on
-2026-10-26) and refuses a certificate whose key does not match. The key file must not be
-readable by group or others. Not verified here: a live handshake between two replicas.
+accepts real PEM files and refuses a certificate whose key does not match. The key file
+must not be readable by group or others. A live test (bench v0.6.0, 2026-10-27, two
+gateway v0.16.1 processes, PostgreSQL 18.6) saw 8 of 8 admissions forwarded to the owner
+over mTLS, and a replica with a certificate from another CA get no answer.
 See [High availability]({{< relref "gateway.md" >}}#ha).
 
 - Behaviour in a failover, the chaos results and the open items: [High availability]({{< relref "gateway.md" >}}#ha).

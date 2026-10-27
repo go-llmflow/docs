@@ -24,7 +24,7 @@ Everything is **pure Go** (`CGO_ENABLED=0`) and BSD-3-Clause.
 | [Deployment]({{< relref "deployment.md" >}}) | a skeleton: how the gateway, its replicas, vLLM as Slurm jobs and PostgreSQL fit together, and which page says what |
 | [Finance reports]({{< relref "finance-reports.md" >}}) | what a finance director gets since gateway v0.13.0: project, lab and user attribution, the `/ui/reports` page, CSV, XLSX and PDF exports, reconciliation with Slurm's `sreport`, and the known gaps |
 | [PII recognisers]({{< relref "pii.md" >}}) | the `pii` library (v0.1.0): e-mail, phone, IBAN, French NIR, payment cards and IP addresses found in text, checksum-validated, with the false positives measured |
-| [Benchmarking]({{< relref "benchmarking.md" >}}) | the `bench` tools (v0.5.0): how `gwbench` measures the latency a gateway adds (interleaved, paired per round, load-gated, with a planted-delay control), the recording fake vLLM it measures against, and the checks of the gateway against a real vLLM |
+| [Benchmarking]({{< relref "benchmarking.md" >}}) | the `bench` tools (v0.6.0): how `gwbench` measures the latency a gateway adds (interleaved, paired per round, load-gated, with a planted-delay control), the recording fake vLLM it measures against, and the checks of the gateway against a real vLLM |
 | [Fair-share on a co-owned GPU cluster]({{< relref "guides/fairshare/_index.md" >}}) | a guide: how two institutions can share a cluster of GPU servers with Slurm (batch), vLLM (inference) and a gateway (keys, quotas, priorities), reached from VS Code |
 
 ## Status {#status}
