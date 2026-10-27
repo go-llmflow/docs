@@ -35,7 +35,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # themes/hextra is the tannevaled/hextra fork, pinned to a release tag.
+          # themes/hextra is the tannevaled/hextra fork, pinned to a release tag;
+          # branding is the landing, whose logo and favicon the site mounts.
           submodules: recursive
           # The whole history: each page's date comes from git.
           fetch-depth: 0
@@ -63,6 +64,13 @@ jobs:
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "documented ${documented}: documentation version ${version}"
+
+      # Each page's creation (first commit, followed across renames) and its
+      # author, for the page history at its foot (params.page.history).
+      - name: Page history
+        run: |
+          mkdir -p data
+          sh themes/hextra/scripts/page-history.sh > data/pagehistory.json
 
       # --panicOnWarning: a relref to a page that is not there, a deprecated
       # setting or a template warning fails the build rather than scrolling by.
