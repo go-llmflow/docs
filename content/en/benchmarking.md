@@ -11,8 +11,9 @@ command-line tools, in pure Go, for measuring LLM gateways such as the
 **adds**, and `fakevllm` is the upstream it is measured against.
 [Repository →](https://github.com/go-llmflow/bench)
 
-This page is written from the repository's README at **v0.6.0** (and v0.2.0 for the
-parts that did not change). v0.6.0 adds a live test of the HA mutual TLS (see
+This page is written from the repository's README at **v0.7.0** (and v0.2.0 for the
+parts that did not change). v0.7.0 adds a live test of the gateway's hard budgets (see
+[Hard budgets](#verified-hard-budgets)). v0.6.0 adds a live test of the HA mutual TLS (see
 [HA mutual TLS](#verified-ha-mtls)). v0.5.0 adds a fake slurmrestd and the Slurm end-to-end test
 (see [Slurm discovery](#verified-slurm)). v0.4.0 teaches `fakevllm` to mimic Anthropic's API and adds
 the `e2e/anthropic` suite (see [fakevllm](#fakevllm) and
@@ -238,6 +239,43 @@ second test, `TestGatewayInFrontOfRealAnthropic`, runs only when
 `BENCH_ANTHROPIC_KEY_FILE` names a file holding a key (the model is
 `BENCH_ANTHROPIC_MODEL`, default `claude-haiku-5-5`). **It was not run for v0.4.0, since
 no key was available.**
+
+### Hard budgets: usage within W {#verified-hard-budgets}
+
+`TestHardBudgetUsageWithinW` (bench v0.7.0, gateway v0.17.0, #87) sends requests through a
+gateway whose team has a budget. For each one, vLLM's usage must stay within the worst
+case W the gateway held, `W = prompts * max((L-M)*p_in + n*M*p_out, L*p_in)`, with `L`
+vLLM's `max_model_len` (from its `/v1/models`) and `M` the `max_tokens` sent (the client's,
+or the gateway's, in `X-Llmflow-Max-Tokens`). It checks the tokens (prompt at most
+prompts*L, completion at most prompts*n*M) and the cost; that the ledger never passes the
+limit; and that a budget below the smallest W refuses with 429 before vLLM sees anything.
+
+Run on 2026-10-28 with vLLM 0.32.1rc1 nightly CPU, Qwen2.5-0.5B-Instruct,
+`--max-model-len 512 --max-num-seqs 2`, and gateway v0.17.0 (the nightly needs
+`--shm-size=1g`, else it fails at start with "Insufficient space in /dev/shm"). Test prices
+1000 / 5000 / 100 per million tokens (input / output / cached):
+
+| Request | M sent | Usage (prompt / completion) | Cost <= W |
+| --- | --- | --- | --- |
+| chat, no `max_tokens` | 512 (picked) | 35 / 149 | 0.780 <= 2.560 |
+| chat, `n` = 3 | 16 | 34 / 42 | 0.244 <= 0.736 |
+| chat, streamed | 32 | 34 / 32 | 0.194 <= 0.640 |
+| chat, prompt of 488 tokens out of 512 | 64 | 488 / 10 | 0.538 <= 0.768 |
+| same, no `max_tokens` | 512 (picked) | 488 / 24 | 0.608 <= 2.560 |
+| completions, 2 prompts, `n` = 2 | 8 | 9 / 32 | 0.169 <= 1.168 |
+
+On a prompt near L, vLLM cut the output at `L - input`, as `get_max_tokens` says, which is
+why W counts `L - M` input tokens beside `M` output tokens.
+
+The gateway repository also has `TestPropertyNeverExceededPG`, which needs a PostgreSQL:
+it runs three seeds of random traffic with replica kills (the run fails if fewer than 30
+happened) and checks that no period's cost passes the largest limit it ever had, and a
+**planted control**, the pre-#87 admission on the same workload, must exceed the limit, or
+the test fails because it could not see an overshoot. That is from the test's source; this
+page did not run it.
+
+**Not measured:** throughput or the latency the escrow adds to admission (the machine's
+load was above the gate), and audio transcription.
 
 ### HA mutual TLS between two replicas {#verified-ha-mtls}
 

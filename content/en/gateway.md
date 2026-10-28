@@ -13,7 +13,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.16.1.** The versions so far:
+**The current release is v0.17.0.** The versions so far:
 
 | Version | Content |
 | --- | --- |
@@ -39,11 +39,12 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.15.2](https://github.com/go-llmflow/gateway/releases/tag/v0.15.2) | **Slurm discovery works with `ha`** (#83), and go-pdfkit v0.20.0: the binary no longer links a widget toolkit (42,110,114 to 39,790,834 bytes, 5.5 % smaller). Open defect 18 is fixed |
 | [v0.16.0](https://github.com/go-llmflow/gateway/releases/tag/v0.16.0) | **mutual TLS on the internal replica channel** (`tls_cert_file`, `tls_key_file`, `tls_ca_file`, `tls_server_name` in the `ha` block). **It refused every real PEM file: use v0.16.1** |
 | [v0.16.1](https://github.com/go-llmflow/gateway/releases/tag/v0.16.1) | the mutual-TLS files are read as PEM over several lines (file paths or `vault:` references); the key file must not be readable by group or others |
+| [v0.17.0](https://github.com/go-llmflow/gateway/releases/tag/v0.17.0) | **hard budgets: a budget is never exceeded** (#87): the worst case is reserved before admission, escrow grants in PostgreSQL, settlement in the usage record's transaction. A **PostgreSQL migration** and a behaviour change for small budgets: see [Hard budgets](#hard-budgets) |
 
 **Which tag to take.** v0.13.1 was published **after** v0.14.0, and on a commit that
 already contains the HA code of v0.14.0 (it descends from it); v0.14.1 is the very same
 commit. A tag number going down in time is therefore not a downgrade here. Take
-**v0.14.1 or later** (today v0.16.1), not v0.13.1, so that your version number says
+**v0.14.1 or later** (today v0.17.0), not v0.13.1, so that your version number says
 what the binary holds. The HA code does nothing without an `ha` block.
 
 ```sh
@@ -171,14 +172,15 @@ token.
 | `GET`, `PUT /admin/teams/{team}/models` | the model groups a team may use (empty list = every configured model) |
 | `GET /admin/keys?team=`, `POST /admin/keys`; `DELETE /admin/keys/{id}` | keys (the `llmf-...` secret is returned once); a key may carry `tags` |
 | `GET`, `PUT /admin/budgets`; `DELETE /admin/budgets?kind=&name=&model=` | budgets: `{"kind","name","model","period","max_cost","soft_limit"}` with `period` `day`, `week` or `month` |
-| `POST /admin/budgets/increase` | a temporary increase with an expiry |
+| `POST /admin/budgets/increase` | a temporary increase with an expiry; `force` as on PUT (see [Hard budgets](#hard-budgets)) |
+| `POST /admin/budgets/release-replica` | release the grants of a dead replica; proxy admin or that organisation's org admin, audited |
 | `GET /admin/spend?from=&to=&group_by=&format=` | spend report grouped by any of `org`, `lab`, `team`, `project`, `user`, `key`, `model`, `pool`, `tag`, `day`; `json`, `csv` or `parsable2`; filtered to what the caller may see; 60 s deadline |
 | `GET /admin/export?from=&to=&format=csv\|xlsx\|pdf` | the report as a download, audited; see [Finance reports]({{< relref "finance-reports.md" >}}#exports) |
 | `GET /admin/usage.csv?from=&to=` | the v0.1 export |
 | `GET /admin/fairshare` | reservations, in-flight, borrowing, usage, level fairshare and rank per pool and organisation |
 
 A request is refused with 429, naming the scope, as soon as one budget it falls
-under is exhausted. `soft_limit` triggers one alert per budget and period, to a
+under cannot hold its worst-case cost ([Hard budgets](#hard-budgets), since v0.17.0). `soft_limit` triggers one alert per budget and period, to a
 webhook and/or by e-mail through an SMTP relay.
 
 ## Configuration (HCL2) {#configuration}
@@ -186,7 +188,7 @@ webhook and/or by e-mail through an SMTP relay.
 The configuration is written in
 [HCL2 native syntax](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md);
 the repository's `examples/gateway.hcl` is parsed by its test suite, so it stays
-valid. This extract was run through `llmflow-gateway check-config` v0.16.1 (with
+valid. This extract was run through `llmflow-gateway check-config` v0.17.0 (with
 the key files present):
 
 ```hcl
@@ -390,7 +392,7 @@ capability and never forwards a client's `Authorization` or `x-api-key`. This is
 legal advice: check your institution's contracts with your DPO.
 
 This block, from the gateway's `examples/anthropic.hcl` with this page's names, passes
-`llmflow-gateway check-config` v0.16.1 (with the key files present, and the
+`llmflow-gateway check-config` v0.17.0 (with the key files present, and the
 organisations, the `b300` pool and the local `llama-3.3-70b` model of that example
 around it):
 
@@ -486,6 +488,135 @@ header is absent). During it, requests are not sent: they go to the model's
 5-minute and 1-hour lifetime, output), each priced at its own rate from the `cost`
 block, in USD, with its price date.
 
+### Hard budgets: a budget is never exceeded (since v0.17.0) {#hard-budgets}
+
+A request starts only when **every budget it falls under can pay its worst case**, as
+Slurm's `AccountingStorageEnforce=safe` starts a job only if the job will be able to run to
+completion ([resource limits](https://slurm.schedmd.com/resource_limits.html)). Before
+v0.17.0 the cost was known only when a request ended, so a burst could overspend by what
+was in flight; that limitation (number 2 in the list below) is removed.
+
+**The worst case W** comes from vLLM's own bound: it refuses an input longer than
+`max_model_len` and generates at most `min(max_tokens, max_model_len - input)` per choice
+(`get_max_tokens`). With `L = max_model_len`, `M` the `max_tokens` sent, `n` choices and
+the highest price that can apply (`p_in`: input, cached, cache writes, either tier;
+`p_out`: output), per prompt:
+
+```text
+W = max((L - M) * p_in + n * M * p_out, L * p_in)
+```
+
+Completion prompt lists, embedding inputs and rerank documents count one prompt each. For
+an Anthropic model, `W = context_window * p_in + M * p_out`. Costs are integers of
+nano-units, so there is no float drift in `spent + held <= limit`.
+
+**`max_tokens`.** Under a budget the gateway always sends one. The client's value is
+**never lowered**: when its W does not fit, the request is refused with 429
+(`insufficient_quota`) naming the scope, the room left and the request's maximum cost.
+When the client sent none, the gateway picks the largest that fits, from the model's
+`max_output_tokens` (or the context length) down to `budgets.min_max_tokens`, and says so
+in the `X-Llmflow-Max-Tokens` response header. Every answer under a budget carries
+`X-Llmflow-Budget-Reset` (RFC 3339): when the budget that refused resets or, on success,
+when the tightest one does.
+
+**Refused under a budget (400, with the reason)**, because nothing bounds their cost:
+Responses built-in tools; Anthropic server tools, `mcp_servers` and `container`; the
+`compact-*` betas, and a `context-1m-*` beta wider than `context_window`; transcriptions
+of a priced model (priced per audio duration). A model whose context length is unknown is
+refused under a budget with 503, rather than guessed.
+
+**The escrow.** PostgreSQL holds, per budget and period, `spent` and, per replica process,
+a **grant**; every transaction keeps `spent + sum(grants) <= limit`. A replica admits
+locally while its grant covers what it has in flight, with no database round trip per
+request. A grant that runs short grows in one transaction (all of the request's budgets or
+none, rows locked in one order), by the larger of what is missing and `grant_share` of the
+room left; near the limit grants shrink to one request, and an unused grant goes back after
+`grant_idle`. Storing a request's usage record **settles its hold in the same
+transaction**; a record replayed from the spool settles nothing twice. A request that costs
+more than its W is charged anyway and counted in `llmflow_budget_hold_exceeded_total`
+(alert on any). The estimate of an aborted stream is capped at W.
+
+**Crashes.** A dead process's grants are never released on a timer, since its spool may
+still hold records: the process that replays the spool releases them once every record is
+stored. A replica that never comes back is released with
+`POST /admin/budgets/release-replica {"replica": "<name>"}`, audited, for proxy admins or
+the admins of the budgets' organisation.
+
+**Configuration.** The fragments below pass `llmflow-gateway check-config` v0.17.0 (with the
+key files present, and organisations, pools and keys around them):
+
+```hcl
+budgets {
+  grant_share    = 0.1   # share of the room left that a refill takes (0..1]
+  grant_idle     = "5s"  # an unused grant goes back after this (100ms..10m)
+  min_max_tokens = 16    # the smallest max_tokens the gateway picks
+}
+
+model "llama-3.3-70b" {
+  max_model_len     = 32768  # else read from the upstreams' /v1/models
+  max_output_tokens = 4096   # caps max_tokens (a larger one: 400)
+  # ... upstream_model, pool, key_file and upstream blocks as before
+}
+
+model "claude-sonnet" {
+  provider       = "anthropic"
+  context_window = 200000    # required for a budget to admit the model
+  # ... as in "Anthropic as an upstream" above
+}
+```
+
+Without `max_model_len` the gateway reads it from each upstream's `GET /v1/models` at
+health check and sends a held request only to an upstream whose length it has read since
+that upstream last became healthy. **Set `max_model_len` on every model a budget can apply
+to**, so it is never learned late, for example from a Slurm instance that just joined.
+`check-config` bounds every price to 1e6 per million tokens (so the integers cannot
+overflow) and refuses a context beta wider than `context_window`: with
+`anthropic_betas = ["context-1m-2025-08-07"]` or `["*"]` with `context_window = 200000`,
+v0.17.0 answers `Context beta wider than context_window ... set context_window = 1000000
+(or more), or do not allow the beta` (both were run). A `compact-*` beta passes
+`check-config` and is refused at request time under a budget, as listed above (that part
+was not run here).
+
+**Admin API.**
+- `PUT /admin/budgets` and `POST /admin/budgets/increase` accept `"force": true`. Lowering
+  a budget below what the period committed is refused with **409** without it; with it
+  (proxy and organisation admins only, audited) new admissions stop and what was admitted
+  finishes. Other replicas see it at their next budget refresh.
+- A new budget kind, **`user`**: the person as the reports name them (a key's owner, or a
+  JWT's user), across all their keys and tokens. Set by the admins of an organisation or
+  team the user belongs to; the user reads their own.
+- `GET /admin/budgets` returns `committed` (the cost of the requests settled under the
+  budget in the period) and `held` (the grants the replicas hold for requests in flight)
+  beside `spent`.
+- A temporary increase is lent only to requests that end before it does
+  (`limits.max_request_duration`); a budget created mid-period starts from the usage
+  already stored; a request is charged to the period that admitted it.
+
+**Metrics.** `llmflow_budget_hold_exceeded_total` (alert on any),
+`llmflow_budget_grant_refills_total`, `llmflow_budget_hold_refused_total` and
+`llmflow_budget_grant_return_failures_total`.
+
+**Remaining edges**, as the repository states them: a request admitted before a replica
+loaded a new budget (at most `budget_refresh`) is not held by it; and a record dropped by a
+full accounting queue is not billed, as before, with its hold staying reserved until its
+replica restarts or is released. The maintainers have told this page of a further case, a
+budget created in the middle of a period while requests in its scope are in flight, for
+which a fix is planned (v0.17.1); **this page does not claim it is covered by v0.17.0**.
+
+**Upgrading from v0.16 to v0.17.** The migration runs at start-up: it adds the tables
+`llmflow_budget_ledger` and `llmflow_budget_grants`, `limit_epoch` on `llmflow_budgets_v2`,
+and `cost_nano` and `admitted_at` on `llmflow_usage`; each period's ledger starts from its
+stored usage. Back the database up first. Budgets that used to admit while under their limit
+now admit only what fits at the worst case: **set `max_tokens` (or `max_output_tokens`) to
+keep small budgets usable**. Spool files written by v0.17 carry the holds and are **not
+readable by v0.16**: drain the spool before a downgrade.
+
+**What was measured** (see [Benchmarking]({{< relref "benchmarking.md" >}}#verified-hard-budgets)):
+a live test against a real vLLM kept usage within W in six cases, and the gateway
+repository has a PostgreSQL property test that kills replicas and checks that no period
+passes its limit, with a planted control that does. **No performance figure exists yet**
+for the extra admission cost: the machine's load was above the measurement gate.
+
 ### Cost units (since v0.12.0) {#cost-units}
 
 A cost has a **unit**. vLLM models cost GPU-hours by default; a model can be priced in
@@ -523,7 +654,7 @@ org "etabA" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.16.1 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.17.0 (with the key files present,
 and a pool and a model around it).
 
 - **What the header may name.** A project **name**, looked up in the key's own team
@@ -559,7 +690,7 @@ true`. Spans carry metadata only (organisation, team, key id, model, pool, prior
 status, token counts, guardrail verdicts), **never a prompt or an answer**.
 
 This block, with the fallbacks and audio settings above, passes
-`llmflow-gateway check-config` v0.16.1 (with the key files present, and
+`llmflow-gateway check-config` v0.17.0 (with the key files present, and
 organisations, pools and models around it):
 
 ```hcl
@@ -615,7 +746,7 @@ ha {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.16.1 (with the key, DSN and secret
+This block passes `llmflow-gateway check-config` v0.17.0 (with the key, DSN and secret
 files present, and organisations, a pool and a model around it). `check-config` also
 checks the block: the postgres store, an advertised IP literal inside `peer_networks`,
 `heartbeat` at most a third of `lease_ttl`, `forward_timeout` at most a heartbeat, and a
@@ -640,7 +771,7 @@ This form is **tested live**: bench v0.6.0's
 against PostgreSQL 18.6 with two gateway v0.16.1 processes configured from PEM files
 (ECDSA and Ed25519 leaves, SAN `llmflow-ha`, key files at mode 0600, which the loader
 requires): 8 of 8 admissions sent to the non-owner were forwarded to the owner over mTLS.
-`check-config` v0.16.1 also accepts such files. The
+`check-config` v0.17.0 also accepts such files. The
 repository's README also shows the certificate and key as `vault:` references, such as
 `vault:secret/llmflow/ha#cert`; the loader accepts both a file path and a `vault:`
 reference, and that form needs a `vault` block which is not shown here and was not run.
@@ -763,7 +894,7 @@ model "llama" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.16.1 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.17.0 (with the key files present,
 and organisations around it).
 
 - **Convention.** A job serves model `M` on port `P` when its name (or else its comment)
@@ -894,7 +1025,7 @@ check use `llmflow-gateway audit verify` with a public key kept elsewhere (see
 server in front of the tool servers of the configuration. It speaks the Streamable
 HTTP binding of revision **2026-07-28** and, for older clients, the initialize
 handshake of **2025-11-25** (and 2025-06-18, 2025-03-26). A client authenticates
-with its virtual key. This block passes `llmflow-gateway check-config` v0.16.1
+with its virtual key. This block passes `llmflow-gateway check-config` v0.17.0
 (with the key files present, and an `sso` block, organisations, a pool and a model
 around it):
 
@@ -1130,7 +1261,7 @@ PostgreSQL. The estimate undercounts tool-call and reasoning tokens.
 
 ## Limitations {#limitations}
 
-Open defects of v0.16.1, as the repository lists them:
+Open defects of v0.17.0, as the repository lists them:
 
 1. **Rate limits and the key cache are per process.** Since v0.14.0 the fair-share
    state is shared between replicas **with an `ha` block** (see
@@ -1144,9 +1275,8 @@ Open defects of v0.16.1, as the repository lists them:
    `usage_persist` earlier; the fencing token is checked by PostgreSQL and by the
    replicas, not by vLLM. Without the `tls_*` files (mutual TLS, usable from v0.16.1) the
    internal channel is authenticated, not encrypted.
-2. **Budgets lag.** The cost is known when a request ends, so a burst of long
-   requests can overspend by what is in flight. Several gateways see each other's
-   spend only at their next refresh.
+2. *(Removed in v0.17.0: budgets no longer lag. See [Hard budgets](#hard-budgets) for
+   what remains at their edges.)*
 3. **Priority is fixed at admission.** A borrowing request already queued in vLLM
    keeps its priority when its organisation drops back under its reservation, and
    teams inside an organisation share its reservation without sub-shares of
@@ -1159,7 +1289,8 @@ Open defects of v0.16.1, as the repository lists them:
    refuses it too (counted in `llmflow_accounting_failed_total`, alerted as
    `accounting_records_lost`). A record still in the queue when the process dies (at
    most about 1 s of traffic) is lost. Everything that reached the spool survives a
-   store outage and a crash. Budgets count the cost until the next refresh only.
+   store outage and a crash. (The README no longer says that budgets count the cost
+   only until the next refresh: since v0.17.0 holds and settlement are in PostgreSQL.)
 7. **No TLS** in the gateway: put it behind a TLS proxy. The **admin API shares
    the client listener**. `/v1/responses` is served
    statelessly only (see [above](#responses)).
