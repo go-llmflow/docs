@@ -16,7 +16,7 @@ Everything is **pure Go** (`CGO_ENABLED=0`) and BSD-3-Clause.
 
 | Page | What it says |
 | --- | --- |
-| [Gateway]({{< relref "gateway.md" >}}) | the `gateway` project (v0.17.0): an OpenAI-compatible gateway in front of vLLM. Its configuration, hierarchy and roles, admin API, how fair-share with borrowing works, prefix-cache isolation, overhead measurement, limitations and roadmap |
+| [Gateway]({{< relref "gateway.md" >}}) | the `gateway` project (v0.17.1): an OpenAI-compatible gateway in front of vLLM. Its configuration, hierarchy and roles, admin API, how fair-share with borrowing works, prefix-cache isolation, overhead measurement, limitations and roadmap |
 | [Identity]({{< relref "identity.md" >}}) | how the gateway takes people from your identity provider: OpenID Connect tokens, administrator single sign-on, SAML federations through a bridge, SCIM provisioning, key rotation |
 | [Coding agents]({{< relref "agents.md" >}}) | using the gateway from VS Code and from agents that speak the OpenAI Responses or the Anthropic Messages API, and why Responses are stateless |
 | [Audit and logging]({{< relref "audit.md" >}}) | the hash-chained admin audit log, its anchors and what they do not protect against, per-team request logs, retention, request policies |
@@ -30,7 +30,7 @@ Everything is **pure Go** (`CGO_ENABLED=0`) and BSD-3-Clause.
 ## Status {#status}
 
 The organisation has three repositories with code (the third, [`bench`](https://github.com/go-llmflow/bench), v0.4.0, holds the measuring tools described in [Benchmarking]({{< relref "benchmarking.md" >}})). [`gateway`](https://github.com/go-llmflow/gateway)
-has its **current release at v0.17.0**: virtual keys, budgets on every scope of an
+has its **current release at v0.17.1**: virtual keys, budgets on every scope of an
 organisation, team, project and key hierarchy with delegated roles, HCL2
 configuration, an admin API, fair-share with borrowing, per-tenant prefix-cache
 isolation, identity (OpenID Connect, single sign-on, SCIM), an anchored audit log,

@@ -16,7 +16,7 @@ Published at <https://go-llmflow.github.io/docs/>:
 - **Finance reports** (gateway v0.13.0): attribution by project, lab and user, the reports
   page, CSV/XLSX/PDF exports, reconciliation with Slurm.
 - **Security**: the audit and chaos run of 2026-10-26 (gateway v0.9.0).
-- **Gateway** (v0.17.0): HCL2 configuration, hierarchy and roles, admin API, admin web UI, MCP gateway,
+- **Gateway** (v0.17.1): HCL2 configuration, hierarchy and roles, admin API, admin web UI, MCP gateway,
   fair-share with borrowing, prefix-cache isolation, overhead A/B against LiteLLM,
   guardrails, limitations, roadmap.
 - **Guide: fair-share on a co-owned GPU cluster**: Slurm, vLLM, the gateway, VS Code

@@ -93,7 +93,7 @@ params:
   docs:
     # The gateway release these pages describe (v0.16.1 -> documentation
     # version 0.16, published at /docs/0.16/). The CI reads it here.
-    version: "v0.17.0"
+    version: "v0.17.1"
   versions:
     # What the version selector shows for the "main" build (development icon).
     development: "main"
