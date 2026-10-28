@@ -174,7 +174,7 @@ token.
 | `GET /admin/keys?team=`, `POST /admin/keys`; `DELETE /admin/keys/{id}` | keys (the `llmf-...` secret is returned once); a key may carry `tags` |
 | `GET`, `PUT /admin/budgets`; `DELETE /admin/budgets?kind=&name=&model=` | budgets: `{"kind","name","model","period","max_cost","soft_limit"}` with `period` `day`, `week` or `month` |
 | `POST /admin/budgets/increase` | a temporary increase with an expiry; `force` as on PUT (see [Hard budgets](#hard-budgets)) |
-| `POST /admin/budgets/release-replica` | release the grants of a dead replica and drop its registration; proxy admin only, audited |
+| `POST /admin/budgets/release-replica` | release the grants of a dead replica (an org admin: on their organisation's budgets); only a proxy admin also drops its registration; audited |
 | `GET /admin/spend?from=&to=&group_by=&format=` | spend report grouped by any of `org`, `lab`, `team`, `project`, `user`, `key`, `model`, `pool`, `tag`, `day`; `json`, `csv` or `parsable2`; filtered to what the caller may see; 60 s deadline |
 | `GET /admin/export?from=&to=&format=csv\|xlsx\|pdf` | the report as a download, audited; see [Finance reports]({{< relref "finance-reports.md" >}}#exports) |
 | `GET /admin/usage.csv?from=&to=` | the v0.1 export |
@@ -540,8 +540,8 @@ more than its W is charged anyway and counted in `llmflow_budget_hold_exceeded_t
 **Crashes.** A dead process's grants are never released on a timer, since its spool may
 still hold records: the process that replays the spool releases them once every record is
 stored. A replica that never comes back is released with
-`POST /admin/budgets/release-replica {"replica": "<name>"}`, audited, for proxy admins
-(see [below](#budget-mid-period)).
+`POST /admin/budgets/release-replica {"replica": "<name>"}`, audited, by an org admin (that
+organisation's budgets) or a proxy admin (see [below](#budget-mid-period)).
 
 **Configuration.** The fragments below pass `llmflow-gateway check-config` v0.17.1 (with the
 key files present, and organisations, pools and keys around them):
@@ -617,7 +617,8 @@ a replica that had not yet loaded it kept admitting in its scope without a hold.
   created over a scope with heavy traffic may therefore refuse for a moment after its
   creation.
 - **A dead process** stays registered until the process that replays its spool releases it,
-  or a proxy admin releases its replica with `POST /admin/budgets/release-replica`: the
+  or a proxy admin releases its replica (registration included) with
+  `POST /admin/budgets/release-replica`: the
   budget stays arming for its scope meanwhile. Never on a timer.
 - **Records.** Every stored record now counts in every budget of its scope, held or not;
   that is how the cost of work admitted before a budget existed lands in it. A period's
@@ -630,11 +631,9 @@ ends above **max(limit, the cost of the work admitted before the budget existed,
 nothing on it)**: what the budget itself admits never takes the period past its limit, or
 past the cost of that earlier work when it alone is larger.
 
-**`release-replica`.** In v0.17.1 it also drops the replica's registration (so that
-arming budgets can finish), it is audited, and it is for **proxy admins only**. (The
-README's "Crashes" paragraph still says organisation admins may use it; the README's
-arming paragraph and the gateway's authorisation test say proxy admins only, and this page
-follows those two.)
+**`release-replica`** is audited and has two levels. An **org_admin** releases only that
+replica's grants on their own organisation's budgets. Only a **proxy_admin** also drops the
+replica's registration, which arming budgets of every organisation wait for.
 
 **Other edges.** A forced lower (`"force": true`) is an explicit admin act: what was already
 admitted finishes. A record dropped by a full accounting queue is not billed, as before,
