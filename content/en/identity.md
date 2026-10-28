@@ -22,7 +22,7 @@ is the reference.
 
 ## A configuration {#configuration}
 
-This block was run through `llmflow-gateway check-config` v0.16.1 (with the key
+This block was run through `llmflow-gateway check-config` v0.17.0 (with the key
 files present), together with the rest of a configuration it needs (organisations,
 a pool and a model, left out here).
 
