@@ -70,17 +70,29 @@ the end of a period.
 **The rolling window** (`"period": "rolling:5h"`, a general budget period, 5 minutes to 168
 hours in whole 5 minutes, no `soft_limit`) keeps its spend in 5-minute buckets, so its spent
 counts at most 5 minutes more than the window, never less; a request counts in the bucket of
-its end. Replica clocks must be in sync, as for calendar periods.
+its end. Since v0.18.1 the buckets are kept for the longest window that can apply (7 days, at
+most 2016 buckets per budget), so **widening `session_window` no longer forgets spend**
+(defect #98 of v0.18.0, see [Security]({{< relref "security.md" >}}#v0181)). Replica clocks
+must be in sync, as for calendar periods.
 
 ## Who assigns {#delegation}
 
 - A **proxy admin** assigns anyone.
-- An **org_admin** assigns a person all of whose role bindings are in their organisation.
+- An **org_admin** assigns a person all of whose **team** bindings are in their organisation
+  (see the v0.18.1 rule below).
 - A **team_admin** assigns a person all of whose bindings are in teams they administer.
 - A person with a binding in another organisation, a proxy role, or no binding at all (a JWT's
   user) is the proxy admins' only: a profile limits the person everywhere, so one organisation
   does not decide it for another.
 - People read their own profile; administrators and viewers read the people of their scope.
+
+**Since v0.18.1, membership is the team bindings** (which SSO and SCIM also create). An
+organisation-level binding (`viewer`, `org_admin`) is authority, not membership: it gives no
+access to the person, whoever granted it. So an org_admin **no longer assigns another org_admin
+who is in no team**: ask a proxy admin. The same rule applies to the user budgets API. (The
+README's "Who assigns" paragraph at v0.18.1 still has the older wording; this page follows its
+"Security fixes in v0.18.1" section.) A further case, #104 (a team-role grant to a user with no
+binding), is **open and being fixed in v0.18.2**; see [Security]({{< relref "security.md" >}}#v0181).
 
 Every assignment is stored with its history (who, when, which profile) and audited.
 
@@ -106,7 +118,7 @@ session_window  = "5h"  # 5m..24h in whole 5 minutes
 ```
 
 This block, with `budgets`, models and organisations around it, passes
-`llmflow-gateway check-config` v0.18.0. HCL allows one attribute only in a block written on
+`llmflow-gateway check-config` v0.18.1. HCL allows one attribute only in a block written on
 one line (`profile "q" { days = 0.25 }`): write one attribute per line. A person with
 `default_profile` gets their budgets at their first request, which waits up to 3 s for them
 to arm, once. The budgets API neither lists nor changes the profile budgets
