@@ -92,7 +92,9 @@ access to the person, whoever granted it. So an org_admin **no longer assigns an
 who is in no team**: ask a proxy admin. The same rule applies to the user budgets API. (The
 README's "Who assigns" paragraph at v0.18.1 still has the older wording; this page follows its
 "Security fixes in v0.18.1" section.) A further case, #104 (a team-role grant to a user with no
-binding), is **open and being fixed in v0.18.2**; see [Security]({{< relref "security.md" >}}#v0181).
+binding), is **fixed in v0.18.2**: the first grant to such a user needs a proxy admin, and a
+team binding an org admin granted does not make the person theirs; see
+[Security]({{< relref "security.md" >}}#v0182).
 
 Every assignment is stored with its history (who, when, which profile) and audited.
 
@@ -118,7 +120,7 @@ session_window  = "5h"  # 5m..24h in whole 5 minutes
 ```
 
 This block, with `budgets`, models and organisations around it, passes
-`llmflow-gateway check-config` v0.18.1. HCL allows one attribute only in a block written on
+`llmflow-gateway check-config` v0.18.2. HCL allows one attribute only in a block written on
 one line (`profile "q" { days = 0.25 }`): write one attribute per line. A person with
 `default_profile` gets their budgets at their first request, which waits up to 3 s for them
 to arm, once. The budgets API neither lists nor changes the profile budgets

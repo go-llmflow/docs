@@ -177,6 +177,24 @@ review** and fixed in v0.18.1 (gateway#100). **Upgrade if you use
   longer assigns the profile of another organisation admin who is in no team; ask a proxy
   admin.
 
-**Known and in progress.** A residual case, #104 (a team-role grant to a user who has no
-binding at all), is **open**; a fix is being prepared as v0.18.2. This page does not claim it
-is fixed.
+## Security fix in v0.18.2: who may place a person in an organisation (#104) {#v0182}
+
+v0.18.1 still let an organisation admin pull a user who had no binding, or who belonged to
+another organisation, into their organisation by granting them a team role, and then act on
+them. **Fixed in v0.18.2** (gateway#106). Every role binding now records its **provenance**:
+`scim`, `sso_claim`, `proxy_admin` or `org_admin` (empty for unknown or legacy bindings),
+shown as `provenance` in `GET /admin/users/{name}/roles`.
+
+- **The first grant to a binding-less user, or to a user of another organisation, needs a
+  proxy admin.** An organisation or team admin may grant a role only to a user already
+  provisioned into that organisation: one holding a team binding of that organisation created
+  by SCIM, an SSO claim or a proxy admin. (A user created by an org admin needs a proxy
+  admin's first grant.)
+- **A team binding that an org admin granted does not make the person theirs**: it is ignored
+  by the profile and user-budget access rules. SCIM re-creates a binding it also wants under
+  its own provenance.
+- **Migration.** The column is added automatically (`provenance text NOT NULL DEFAULT ''`).
+  Bindings stored before v0.18.2 have an unknown provenance, which is treated as legitimate:
+  nothing says they were not, so no existing access changes at the upgrade. Only grants made
+  after it are classified. Whether an old binding was in fact illegitimate is therefore not
+  something the upgrade can tell you: review them.
