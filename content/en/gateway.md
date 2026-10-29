@@ -13,7 +13,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.17.1.** The versions so far:
+**The current release is v0.18.0.** The versions so far:
 
 | Version | Content |
 | --- | --- |
@@ -41,11 +41,12 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.16.1](https://github.com/go-llmflow/gateway/releases/tag/v0.16.1) | the mutual-TLS files are read as PEM over several lines (file paths or `vault:` references); the key file must not be readable by group or others |
 | [v0.17.0](https://github.com/go-llmflow/gateway/releases/tag/v0.17.0) | **hard budgets** (#87): the worst case is reserved before admission, escrow grants in PostgreSQL, settlement in the usage record's transaction. A **PostgreSQL migration** and a behaviour change for small budgets: see [Hard budgets](#hard-budgets). A budget created mid-period could still be exceeded: use v0.17.1 |
 | [v0.17.1](https://github.com/go-llmflow/gateway/releases/tag/v0.17.1) | **a budget created mid-period** starts arming and no longer lets earlier work push a period past its limit (#92). A small **PostgreSQL migration**: upgrade every replica before creating budgets. See [Budget created mid-period](#budget-mid-period) |
+| [v0.18.0](https://github.com/go-llmflow/gateway/releases/tag/v0.18.0) | **workload profiles** (#90): a profile in days per week, enforced by hard budgets; workday calibration, session window, overflow, delegation. A **PostgreSQL migration**: upgrade every replica before assigning profiles. See [Workload profiles]({{< relref "workload-profiles.md" >}}) |
 
 **Which tag to take.** v0.13.1 was published **after** v0.14.0, and on a commit that
 already contains the HA code of v0.14.0 (it descends from it); v0.14.1 is the very same
 commit. A tag number going down in time is therefore not a downgrade here. Take
-**v0.14.1 or later** (today v0.17.1), not v0.13.1, so that your version number says
+**v0.14.1 or later** (today v0.18.0), not v0.13.1, so that your version number says
 what the binary holds. The HA code does nothing without an `ha` block.
 
 ```sh
@@ -174,8 +175,9 @@ token.
 | `GET /admin/keys?team=`, `POST /admin/keys`; `DELETE /admin/keys/{id}` | keys (the `llmf-...` secret is returned once); a key may carry `tags` |
 | `GET`, `PUT /admin/budgets`; `DELETE /admin/budgets?kind=&name=&model=` | budgets: `{"kind","name","model","period","max_cost","soft_limit"}` with `period` `day`, `week` or `month` |
 | `POST /admin/budgets/increase` | a temporary increase with an expiry; `force` as on PUT (see [Hard budgets](#hard-budgets)) |
+| `GET`, `PUT`, `DELETE /admin/users/{user}/profile`; `GET /admin/profiles`, `/admin/profiles/people`, `/admin/profiles/capacity`, `/admin/profiles/calibrate`; `POST /admin/profiles/calibrate` | workload profiles (since v0.18.0): see [Workload profiles]({{< relref "workload-profiles.md" >}}#api) |
 | `POST /admin/budgets/release-replica` | release the grants of a dead replica (an org admin: on their organisation's budgets); only a proxy admin also drops its registration; audited |
-| `GET /admin/spend?from=&to=&group_by=&format=` | spend report grouped by any of `org`, `lab`, `team`, `project`, `user`, `key`, `model`, `pool`, `tag`, `day`; `json`, `csv` or `parsable2`; filtered to what the caller may see; 60 s deadline |
+| `GET /admin/spend?from=&to=&group_by=&format=` | spend report grouped by any of `org`, `lab`, `team`, `project`, `user`, `key`, `model`, `pool`, `tag`, `day`, `profile`; `json`, `csv` or `parsable2`; filtered to what the caller may see; 60 s deadline |
 | `GET /admin/export?from=&to=&format=csv\|xlsx\|pdf` | the report as a download, audited; see [Finance reports]({{< relref "finance-reports.md" >}}#exports) |
 | `GET /admin/usage.csv?from=&to=` | the v0.1 export |
 | `GET /admin/fairshare` | reservations, in-flight, borrowing, usage, level fairshare and rank per pool and organisation |
@@ -189,7 +191,7 @@ webhook and/or by e-mail through an SMTP relay.
 The configuration is written in
 [HCL2 native syntax](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md);
 the repository's `examples/gateway.hcl` is parsed by its test suite, so it stays
-valid. This extract was run through `llmflow-gateway check-config` v0.17.1 (with
+valid. This extract was run through `llmflow-gateway check-config` v0.18.0 (with
 the key files present):
 
 ```hcl
@@ -393,7 +395,7 @@ capability and never forwards a client's `Authorization` or `x-api-key`. This is
 legal advice: check your institution's contracts with your DPO.
 
 This block, from the gateway's `examples/anthropic.hcl` with this page's names, passes
-`llmflow-gateway check-config` v0.17.1 (with the key files present, and the
+`llmflow-gateway check-config` v0.18.0 (with the key files present, and the
 organisations, the `b300` pool and the local `llama-3.3-70b` model of that example
 around it):
 
@@ -543,7 +545,7 @@ stored. A replica that never comes back is released with
 `POST /admin/budgets/release-replica {"replica": "<name>"}`, audited, by an org admin (that
 organisation's budgets) or a proxy admin (see [below](#budget-mid-period)).
 
-**Configuration.** The fragments below pass `llmflow-gateway check-config` v0.17.1 (with the
+**Configuration.** The fragments below pass `llmflow-gateway check-config` v0.18.0 (with the
 key files present, and organisations, pools and keys around them):
 
 ```hcl
@@ -642,6 +644,10 @@ safe side. And **with `store.fail_closed = false`, a replica that cannot load th
 keeps admitting without them: that voids the guarantee, which needs the default,
 fail-closed.**
 
+**Profiles on top of budgets.** Since v0.18.0 a person's workload profile is a set of these
+hard budgets, managed by the gateway: see [Workload profiles]({{< relref "workload-profiles.md" >}}).
+Rolling windows (`"period": "rolling:5h"`) are a general budget period.
+
 **Upgrading from v0.17.0 to v0.17.1.** Start-up adds the tables `llmflow_budget_holders` and
 `llmflow_budget_arming` and the column `arming` on `llmflow_budgets_v2`; existing budgets
 stay active. **Upgrade every replica before creating a budget**: a v0.17.0 process does not
@@ -698,7 +704,7 @@ org "etabA" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.17.1 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.18.0 (with the key files present,
 and a pool and a model around it).
 
 - **What the header may name.** A project **name**, looked up in the key's own team
@@ -734,7 +740,7 @@ true`. Spans carry metadata only (organisation, team, key id, model, pool, prior
 status, token counts, guardrail verdicts), **never a prompt or an answer**.
 
 This block, with the fallbacks and audio settings above, passes
-`llmflow-gateway check-config` v0.17.1 (with the key files present, and
+`llmflow-gateway check-config` v0.18.0 (with the key files present, and
 organisations, pools and models around it):
 
 ```hcl
@@ -790,7 +796,7 @@ ha {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.17.1 (with the key, DSN and secret
+This block passes `llmflow-gateway check-config` v0.18.0 (with the key, DSN and secret
 files present, and organisations, a pool and a model around it). `check-config` also
 checks the block: the postgres store, an advertised IP literal inside `peer_networks`,
 `heartbeat` at most a third of `lease_ttl`, `forward_timeout` at most a heartbeat, and a
@@ -815,7 +821,7 @@ This form is **tested live**: bench v0.6.0's
 against PostgreSQL 18.6 with two gateway v0.16.1 processes configured from PEM files
 (ECDSA and Ed25519 leaves, SAN `llmflow-ha`, key files at mode 0600, which the loader
 requires): 8 of 8 admissions sent to the non-owner were forwarded to the owner over mTLS.
-`check-config` v0.17.1 also accepts such files. The
+`check-config` v0.18.0 also accepts such files. The
 repository's README also shows the certificate and key as `vault:` references, such as
 `vault:secret/llmflow/ha#cert`; the loader accepts both a file path and a `vault:`
 reference, and that form needs a `vault` block which is not shown here and was not run.
@@ -938,7 +944,7 @@ model "llama" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.17.1 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.18.0 (with the key files present,
 and organisations around it).
 
 - **Convention.** A job serves model `M` on port `P` when its name (or else its comment)
@@ -1049,6 +1055,7 @@ third-party asset is loaded.
 | Keys | list per team; create (the secret is shown **once**, on a page that is not cached), rotate with a grace period, revoke |
 | Budgets | budgets with spent and limit; set and delete |
 | Spend | GPU-hours, requests and tokens over a period, grouped by organisation, team, project, key, model, pool or tag |
+| Profiles (since v0.18.0) | each person's workload profile, the capacity check and the workday calibration: see [Workload profiles]({{< relref "workload-profiles.md" >}}#ui) |
 | Reports (since v0.13.0) | the finance view of the spend report: period, drill-down, previous period, charts, exports, Slurm reconciliation. See [Finance reports]({{< relref "finance-reports.md" >}}) |
 | Fair share | live state per pool: reservation, in flight, borrowing, level fairshare and rank |
 | Audit | entries page by page, and a button that verifies the chain (status of the checkpoints and of the anchor) |
@@ -1069,7 +1076,7 @@ check use `llmflow-gateway audit verify` with a public key kept elsewhere (see
 server in front of the tool servers of the configuration. It speaks the Streamable
 HTTP binding of revision **2026-07-28** and, for older clients, the initialize
 handshake of **2025-11-25** (and 2025-06-18, 2025-03-26). A client authenticates
-with its virtual key. This block passes `llmflow-gateway check-config` v0.17.1
+with its virtual key. This block passes `llmflow-gateway check-config` v0.18.0
 (with the key files present, and an `sso` block, organisations, a pool and a model
 around it):
 
@@ -1305,7 +1312,7 @@ PostgreSQL. The estimate undercounts tool-call and reasoning tokens.
 
 ## Limitations {#limitations}
 
-Open defects of v0.17.1, as the repository lists them:
+Open defects of v0.18.0, as the repository lists them:
 
 1. **Rate limits and the key cache are per process.** Since v0.14.0 the fair-share
    state is shared between replicas **with an `ha` block** (see
