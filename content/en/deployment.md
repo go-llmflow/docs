@@ -10,7 +10,7 @@ architecture as the gateway's README gives it and links to the pages that hold t
 details; it adds no measurement and no recommendation of its own. What the READMEs do not
 say is marked **open**, not invented.
 
-Written from the README of gateway **v0.17.1** and of bench v0.7.0.
+Written from the README of gateway **v0.18.0** and of bench v0.7.0.
 
 ## The architecture {#architecture}
 
@@ -106,7 +106,7 @@ The `ha` block, off by default. With **Slurm discovery** (works with `ha` since 
 each replica discovers and health-checks on its own, for its own routing, and only the
 owner's view sets the pool's capacity and reservations. This assembled configuration
 (replicas differ by `replica_id`, `listen` and `advertise`) passes
-`llmflow-gateway check-config` v0.17.1 with the key, DSN, secret and token files present:
+`llmflow-gateway check-config` v0.18.0 with the key, DSN, secret and token files present:
 
 ```hcl
 store {
