@@ -153,3 +153,30 @@ v0.2.0, scim v0.1.1, s3 v0.2.1, pii v0.2.1.
 
 The gateway's [limitations]({{< relref "gateway.md" >}}#limitations) list the open
 defects, re-checked in this audit.
+
+## Security fixes in v0.18.1 {#v0181}
+
+Not part of the 2026-10-26 audit above: two defects of v0.18.0 found by a **post-merge
+review** and fixed in v0.18.1 (gateway#100). **Upgrade if you use
+[workload profiles]({{< relref "workload-profiles.md" >}}).**
+
+- **#98, a hard-budget hole.** A rolling window kept only twice its current length of
+  spend, so widening `session_window` (for example 1 h to 5 h) forgot spend that was inside
+  the new window and a session budget could be exceeded. A rolling budget now keeps its
+  buckets for the longest window that can apply (`MaxRollingWindow`, 7 days: at most 2016
+  buckets of 5 minutes per budget), on the memory and the PostgreSQL store. **Spend lost by
+  a v0.18.0 prune before the upgrade is not recoverable from the buckets**; it is still in
+  the usage records.
+- **#99, an authorization bypass.** An organisation admin could grant their organisation's
+  `viewer` role to any existing user, which made that person theirs to assign a profile,
+  read and delete. Who a person belongs to is now decided by their **team** bindings (which
+  SSO and SCIM also create). An organisation-level binding (`viewer`, `org_admin`) is
+  **authority, not membership**: it gives no access to the person, whoever granted it. A
+  person with only such bindings, or none, or a proxy role, belongs to the proxy admins. The
+  same rule applies to the user budgets API. **Behaviour change:** an organisation admin no
+  longer assigns the profile of another organisation admin who is in no team; ask a proxy
+  admin.
+
+**Known and in progress.** A residual case, #104 (a team-role grant to a user who has no
+binding at all), is **open**; a fix is being prepared as v0.18.2. This page does not claim it
+is fixed.

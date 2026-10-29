@@ -13,7 +13,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.18.0.** The versions so far:
+**The current release is v0.18.1.** The versions so far:
 
 | Version | Content |
 | --- | --- |
@@ -41,12 +41,13 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.16.1](https://github.com/go-llmflow/gateway/releases/tag/v0.16.1) | the mutual-TLS files are read as PEM over several lines (file paths or `vault:` references); the key file must not be readable by group or others |
 | [v0.17.0](https://github.com/go-llmflow/gateway/releases/tag/v0.17.0) | **hard budgets** (#87): the worst case is reserved before admission, escrow grants in PostgreSQL, settlement in the usage record's transaction. A **PostgreSQL migration** and a behaviour change for small budgets: see [Hard budgets](#hard-budgets). A budget created mid-period could still be exceeded: use v0.17.1 |
 | [v0.17.1](https://github.com/go-llmflow/gateway/releases/tag/v0.17.1) | **a budget created mid-period** starts arming and no longer lets earlier work push a period past its limit (#92). A small **PostgreSQL migration**: upgrade every replica before creating budgets. See [Budget created mid-period](#budget-mid-period) |
-| [v0.18.0](https://github.com/go-llmflow/gateway/releases/tag/v0.18.0) | **workload profiles** (#90): a profile in days per week, enforced by hard budgets; workday calibration, session window, overflow, delegation. A **PostgreSQL migration**: upgrade every replica before assigning profiles. See [Workload profiles]({{< relref "workload-profiles.md" >}}) |
+| [v0.18.0](https://github.com/go-llmflow/gateway/releases/tag/v0.18.0) | **workload profiles** (#90): a profile in days per week, enforced by hard budgets; workday calibration, session window, overflow, delegation. A **PostgreSQL migration**: upgrade every replica before assigning profiles. See [Workload profiles]({{< relref "workload-profiles.md" >}}). Two defects were found afterwards: use v0.18.1 |
+| [v0.18.1](https://github.com/go-llmflow/gateway/releases/tag/v0.18.1) | **security fixes** (#100): a rolling window forgot spend when widened (#98), and an organisation admin could take over a person by granting them `viewer` (#99). See [Security]({{< relref "security.md" >}}#v0181). Upgrade if you use profiles |
 
 **Which tag to take.** v0.13.1 was published **after** v0.14.0, and on a commit that
 already contains the HA code of v0.14.0 (it descends from it); v0.14.1 is the very same
 commit. A tag number going down in time is therefore not a downgrade here. Take
-**v0.14.1 or later** (today v0.18.0), not v0.13.1, so that your version number says
+**v0.14.1 or later** (today v0.18.1), not v0.13.1, so that your version number says
 what the binary holds. The HA code does nothing without an `ha` block.
 
 ```sh
@@ -191,7 +192,7 @@ webhook and/or by e-mail through an SMTP relay.
 The configuration is written in
 [HCL2 native syntax](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md);
 the repository's `examples/gateway.hcl` is parsed by its test suite, so it stays
-valid. This extract was run through `llmflow-gateway check-config` v0.18.0 (with
+valid. This extract was run through `llmflow-gateway check-config` v0.18.1 (with
 the key files present):
 
 ```hcl
@@ -395,7 +396,7 @@ capability and never forwards a client's `Authorization` or `x-api-key`. This is
 legal advice: check your institution's contracts with your DPO.
 
 This block, from the gateway's `examples/anthropic.hcl` with this page's names, passes
-`llmflow-gateway check-config` v0.18.0 (with the key files present, and the
+`llmflow-gateway check-config` v0.18.1 (with the key files present, and the
 organisations, the `b300` pool and the local `llama-3.3-70b` model of that example
 around it):
 
@@ -545,7 +546,7 @@ stored. A replica that never comes back is released with
 `POST /admin/budgets/release-replica {"replica": "<name>"}`, audited, by an org admin (that
 organisation's budgets) or a proxy admin (see [below](#budget-mid-period)).
 
-**Configuration.** The fragments below pass `llmflow-gateway check-config` v0.18.0 (with the
+**Configuration.** The fragments below pass `llmflow-gateway check-config` v0.18.1 (with the
 key files present, and organisations, pools and keys around them):
 
 ```hcl
@@ -704,7 +705,7 @@ org "etabA" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.18.0 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.18.1 (with the key files present,
 and a pool and a model around it).
 
 - **What the header may name.** A project **name**, looked up in the key's own team
@@ -740,7 +741,7 @@ true`. Spans carry metadata only (organisation, team, key id, model, pool, prior
 status, token counts, guardrail verdicts), **never a prompt or an answer**.
 
 This block, with the fallbacks and audio settings above, passes
-`llmflow-gateway check-config` v0.18.0 (with the key files present, and
+`llmflow-gateway check-config` v0.18.1 (with the key files present, and
 organisations, pools and models around it):
 
 ```hcl
@@ -796,7 +797,7 @@ ha {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.18.0 (with the key, DSN and secret
+This block passes `llmflow-gateway check-config` v0.18.1 (with the key, DSN and secret
 files present, and organisations, a pool and a model around it). `check-config` also
 checks the block: the postgres store, an advertised IP literal inside `peer_networks`,
 `heartbeat` at most a third of `lease_ttl`, `forward_timeout` at most a heartbeat, and a
@@ -821,7 +822,7 @@ This form is **tested live**: bench v0.6.0's
 against PostgreSQL 18.6 with two gateway v0.16.1 processes configured from PEM files
 (ECDSA and Ed25519 leaves, SAN `llmflow-ha`, key files at mode 0600, which the loader
 requires): 8 of 8 admissions sent to the non-owner were forwarded to the owner over mTLS.
-`check-config` v0.18.0 also accepts such files. The
+`check-config` v0.18.1 also accepts such files. The
 repository's README also shows the certificate and key as `vault:` references, such as
 `vault:secret/llmflow/ha#cert`; the loader accepts both a file path and a `vault:`
 reference, and that form needs a `vault` block which is not shown here and was not run.
@@ -944,7 +945,7 @@ model "llama" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.18.0 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.18.1 (with the key files present,
 and organisations around it).
 
 - **Convention.** A job serves model `M` on port `P` when its name (or else its comment)
@@ -1076,7 +1077,7 @@ check use `llmflow-gateway audit verify` with a public key kept elsewhere (see
 server in front of the tool servers of the configuration. It speaks the Streamable
 HTTP binding of revision **2026-07-28** and, for older clients, the initialize
 handshake of **2025-11-25** (and 2025-06-18, 2025-03-26). A client authenticates
-with its virtual key. This block passes `llmflow-gateway check-config` v0.18.0
+with its virtual key. This block passes `llmflow-gateway check-config` v0.18.1
 (with the key files present, and an `sso` block, organisations, a pool and a model
 around it):
 
@@ -1312,7 +1313,7 @@ PostgreSQL. The estimate undercounts tool-call and reasoning tokens.
 
 ## Limitations {#limitations}
 
-Open defects of v0.18.0, as the repository lists them:
+Open defects of v0.18.1, as the repository lists them:
 
 1. **Rate limits and the key cache are per process.** Since v0.14.0 the fair-share
    state is shared between replicas **with an `ha` block** (see
