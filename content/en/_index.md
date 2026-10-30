@@ -16,14 +16,14 @@ Everything is **pure Go** (`CGO_ENABLED=0`) and BSD-3-Clause.
 
 | Page | What it says |
 | --- | --- |
-| [Gateway]({{< relref "gateway.md" >}}) | the `gateway` project (v0.20.0): an OpenAI-compatible gateway in front of vLLM. Its configuration, hierarchy and roles, admin API, how fair-share with borrowing works, prefix-cache isolation, overhead measurement, limitations and roadmap |
+| [Gateway]({{< relref "gateway.md" >}}) | the `gateway` project (v0.21.0): an OpenAI-compatible gateway in front of vLLM. Its configuration, hierarchy and roles, admin API, how fair-share with borrowing works, prefix-cache isolation, overhead measurement, limitations and roadmap |
 | [Identity]({{< relref "identity.md" >}}) | how the gateway takes people from your identity provider: OpenID Connect tokens, administrator single sign-on, SAML federations through a bridge, SCIM provisioning, key rotation |
 | [Coding agents]({{< relref "agents.md" >}}) | using the gateway from VS Code and from agents that speak the OpenAI Responses or the Anthropic Messages API, and why Responses are stateless |
 | [Audit and logging]({{< relref "audit.md" >}}) | the hash-chained admin audit log, its anchors and what they do not protect against, per-team request logs, retention, request policies |
 | [Security]({{< relref "security.md" >}}) | the audit and chaos run of 2026-10-26: method, findings A1 to A9 and their fixes, chaos results and residual risks |
 | [Deployment]({{< relref "deployment.md" >}}) | a skeleton: how the gateway, its replicas, vLLM as Slurm jobs and PostgreSQL fit together, and which page says what |
 | [Workload profiles]({{< relref "workload-profiles.md" >}}) | since gateway v0.18.0: give each person a profile in working days per week, enforced by hard budgets; the measured workday, the session window, overflow, who may assign, the capacity check |
-| [Decision reports]({{< relref "decision-reports.md" >}}) | fluids (measured energy attributed to consumers) and lending (v0.19.0); the finance reader role, cost centres and chargeback, adoption, the monthly PDF and XLSX report, and the SMTP migration note (v0.20.0) |
+| [Decision reports]({{< relref "decision-reports.md" >}}) | fluids (measured energy attributed to consumers) and lending (v0.19.0); the finance reader role, cost centres and chargeback, adoption, the monthly PDF and XLSX report, and the SMTP migration note (v0.20.0); the Slurm against DCGM energy reconciliation (v0.21.0) |
 | [Finance reports]({{< relref "finance-reports.md" >}}) | what a finance director gets since gateway v0.13.0: project, lab and user attribution, the `/ui/reports` page, CSV, XLSX and PDF exports, reconciliation with Slurm's `sreport`, and the known gaps |
 | [PII recognisers]({{< relref "pii.md" >}}) | the `pii` library (v0.1.0): e-mail, phone, IBAN, French NIR, payment cards and IP addresses found in text, checksum-validated, with the false positives measured |
 | [Benchmarking]({{< relref "benchmarking.md" >}}) | the `bench` tools (v0.7.0): how `gwbench` measures the latency a gateway adds (interleaved, paired per round, load-gated, with a planted-delay control), the recording fake vLLM it measures against, and the checks of the gateway against a real vLLM |
@@ -32,7 +32,7 @@ Everything is **pure Go** (`CGO_ENABLED=0`) and BSD-3-Clause.
 ## Status {#status}
 
 The organisation has three repositories with code (the third, [`bench`](https://github.com/go-llmflow/bench), v0.4.0, holds the measuring tools described in [Benchmarking]({{< relref "benchmarking.md" >}})). [`gateway`](https://github.com/go-llmflow/gateway)
-has its **current release at v0.20.0**: virtual keys, budgets on every scope of an
+has its **current release at v0.21.0**: virtual keys, budgets on every scope of an
 organisation, team, project and key hierarchy with delegated roles, HCL2
 configuration, an admin API, fair-share with borrowing, per-tenant prefix-cache
 isolation, identity (OpenID Connect, single sign-on, SCIM), an anchored audit log,
