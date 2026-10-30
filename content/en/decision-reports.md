@@ -5,13 +5,13 @@ weight: 31
 
 # Decision reports {#decision-reports}
 
-Two reports for the people who decide how a shared GPU cluster is paid for and shared:
+Reports for the people who decide how a shared GPU cluster is paid for and shared:
 **fluids** (the electricity and cooling each consumer really used) and **lending** (who used
-the guaranteed share, who borrowed, who lent). Both come with
-[gateway]({{< relref "gateway.md" >}}) **v0.19.0** (issue #97, parts 1 and 2). This page is
-written from the README at that tag. Parts 3 and 4 of #97 (finance roles, cost centres and
-chargeback, a monthly decision report) are **not in this release** and are not described here.
-None of this was measured on a production cluster.
+the guaranteed share, who borrowed, who lent), from [gateway]({{< relref "gateway.md" >}})
+**v0.19.0** (issue #97, parts 1 and 2); and, from **v0.20.0** (parts 3 and 4), a **finance
+reader role**, **cost centres and a chargeback file**, **adoption** figures and a **monthly
+decision report**. This page is written from the README at v0.20.0. None of this was measured
+on a production cluster.
 
 ## Fluids: measured energy, attributed to consumers {#fluids}
 
@@ -104,6 +104,154 @@ requests (HTTP 413 beyond). The heavy reports read the store under a timeout and
 run at once**: the next caller gets 429 with `Retry-After`. `org_admin` and org-level `viewer`
 read their own row, not the matrix; team roles get 403. The identities above are
 property-tested in the repository against the real fair-share pool on random timelines.
+
+## The finance reader and cost centres (since v0.20.0) {#finance}
+
+**`finance_viewer`** is a role without scope. It reads the reports of **every organisation**
+(`/admin/spend`, `/admin/export`, `/admin/fluids`, `/admin/lending` with its matrix,
+`/admin/chargeback`, `/admin/adoption`, `/admin/decision`) and nothing else: no listing of
+teams, keys or users, no audit log, no write. **Only a proxy admin grants it**
+(`PUT /admin/users/{name}/roles`); an `org_admin` never can, so an organisation's admin cannot
+open another organisation's reports. It is also a valid `sso` role mapping. Every report route
+has a row in the authorisation-matrix test with a `finance_viewer` column.
+
+**Cost centres** are general-ledger codes on an organisation, a lab or a project; the most
+specific wins (project, then lab, then organisation):
+
+```hcl
+org "etabA" {
+  share       = 0.5
+  cost_center = "GL-7001"
+  team "t1" { lab = "genomics" }
+  lab "genomics" { cost_center = "GL-7002" }
+  project "t1" "p9" { cost_center = "GL-7003" }
+}
+```
+
+A code is 1 to 32 characters of letters, digits, `_ . / -`, starting with a letter or digit
+(no separator, quote or space: a finance system reads it). `check-config` v0.20.0 accepts the
+block above in a complete file and refuses `"GL 7001"`.
+
+## Chargeback {#chargeback}
+
+`GET /admin/chargeback?from=&to=&format=csv|json` (csv by default): **one row per cost centre
+and calendar month** of the period, with `gpu_hours`, `kwh`, `fluids_cost` and
+`fluids_currency` from the [fluids](#fluids) block, and an external provider's spend **in its own
+currency on a row of its own** (`provider_cost`, `provider_currency`).
+
+- **Money is exact.** Each row's cost is rounded **once, half to even**, to the currency's minor
+  unit (`fluids.currency_decimals`, default 2; provider spend: 2) and written as a decimal string
+  without floating point; the JSON also carries the integer `*_cost_minor`. A file's total is the
+  sum of its rows, in integers.
+- **Instants, not day strings.** An interval belongs to the month its start falls in, as in
+  `/admin/fluids`, whatever time of day the period ends (an earlier version dropped energy when
+  `to` was not midnight). Idle energy under `by_usage` is allocated over the **whole calendar
+  month**.
+- **It adds up.** What has no code is the cost centre `UNMAPPED`, and energy no organisation is
+  charged for is `UNALLOCATED`: the file always adds up to the reports.
+- It is a chargeback in FinOps' sense, the file a finance system books (finops.org, Invoicing and
+  Chargeback). **Estimate-against-actual variance is not implemented**: it needs actuals entered
+  somewhere.
+- Organisation admins and viewers get their own codes only.
+
+## Adoption {#adoption}
+
+`GET /admin/adoption?from=&to=&format=json|csv`: active people per day and per week (Monday),
+requests, and per model the active people and requests. **Counts only**: no name, key or content
+leaves it; a service key's request counts as a request and as no one. **Small cells are
+suppressed**: a day, a week or a model used by fewer than *k* distinct people is returned without
+counts (`suppressed`), models suppressed together are merged into `(other models)` with their
+requests, and the overall figure is hidden below *k*. *k* is `adoption_min_users` (top level,
+**default 5, at least 2**; `check-config` v0.20.0 refuses 1: "a figure over one person is that
+person").
+
+## The monthly decision report {#decision}
+
+`GET /admin/decision?from=&to=&format=pdf|xlsx|json` gathers the figures above for a period (at
+most 366 days) into the document a partnership's steering committee reads:
+
+- **PDF**, typeset by go-pdfkit's `html2pdf` v0.3.0: A4, page numbers, a table of contents, then
+  **one page per partner** (guaranteed capacity, use in share, borrowed and lent GPU-hours, net
+  balance, inference GPU-hours against the previous period, fluids on measured energy, latency in
+  share against borrowing, active people, cost centre), then the lending matrix, fluids, adoption,
+  chargeback rows and charts.
+- **XLSX**: sheets Partners, Lending matrix, Chargeback and Adoption; typed cells, one column per
+  unit.
+- **json**: the same data. Proxy roles and `finance_viewer` read every partner and the matrix;
+  `org_admin` and org-level viewers their own partner only. **Every download is audited.**
+
+**Scheduled delivery:**
+
+```hcl
+decision_report {
+  destination = "reports"          # an export block (S3-compatible or a directory)
+  formats     = ["pdf", "xlsx"]    # default both
+  day         = 2                  # of the month, UTC, 1..28 (default 2)
+  mail_to     = ["finance@partner-a.example", "finance@partner-b.example"]  # optional, max 50
+}
+```
+
+This block, with an `export "reports"` block (`kind = "file"`, a `directory`) and an `alerts {
+smtp { ... } }` relay (which `mail_to` requires), passes `check-config` v0.20.0. From that day on,
+the previous calendar month is delivered twice over: **to the export** as
+`decision/YYYY-MM/decision-YYYY-MM.pdf` and `.xlsx` (write-once under Object Lock where the export
+has it), and **by mail** to `mail_to`: a MIME message with the PDF attached, the XLSX too when both
+fit in 8 MiB, else a line saying where the export holds them.
+
+The sink is the state: an object that exists is delivered, and the marker
+`decision/YYYY-MM/mailed.json` says the mail went out, so a restart or a second replica does
+nothing twice, and a report whose upload is still in flight is not typeset again. Every delivery
+is audited **when the object is seen in the export**, not when it is queued, and so is every mail
+(period, format, size, never the content).
+
+## Bounds of the heavy reports (#111) {#bounds}
+
+The heavy reports (lending, chargeback, decision) read the store under a timeout and **at most 2
+run at once: the next caller gets 429 with `Retry-After`**. A period is capped at 366 days and
+**500,000 requests (HTTP 413 beyond)**. The decision report is also refused (413) beyond 100
+partners, 2,000 matrix cells, 3,000 chargeback rows, 400 adoption rows or 16 MiB; typesetting is
+limited to 2 minutes and the build runs under a timeout.
+
+## Mail transport: TLS is now required {#smtp}
+
+**Migration note, read it before upgrading.** Alert and report mail used to go through Go's
+`net/smtp.SendMail`, which upgrades to TLS only when the server offers it: a relay that did not
+advertise STARTTLS got the message, in clear text. Since v0.20.0:
+
+```hcl
+alerts {
+  smtp {
+    server  = "mail.example.org:587"
+    from    = "llmflow@example.org"
+    to      = ["ops@example.org"]
+    tls     = "starttls"   # default; "implicit" (port 465); "none"
+    timeout = "30s"        # dial and whole session
+  }
+}
+```
+
+- `starttls` (the **default**): the session is refused, and nothing is sent, unless the server
+  offers STARTTLS and the handshake succeeds (certificate verified against the host name, TLS 1.2
+  or later).
+- `implicit`: TLS from the first byte.
+- `none`: clear text, the old behaviour. Accepted without more only for a relay on this host
+  (`127.0.0.1`, `localhost`); for any other host it needs `allow_cleartext = true`. A password is
+  never sent over a clear connection to another host.
+- `timeout` (dial and whole session) is new; it defaults to 30 s.
+
+**An existing `smtp` block that points at a relay without STARTTLS now fails every send** ("does
+not offer STARTTLS"), soft-budget alerts and decision-report mail included. Enable STARTTLS on
+the relay, or set `tls = "none"` (plus `allow_cleartext = true` off the local host) to keep the
+old behaviour knowingly. v0.20.0 `check-config` was run on these cases: `tls = "none"` with
+`mail.example.org` is refused ("it is for a relay on this host"); with `allow_cleartext = true`,
+or with a `127.0.0.1` relay, it is accepted. The live behaviour of the session was not run here.
+
+## The PDF costs binary size {#binary-size}
+
+The PDF comes from go-pdfkit's `html2pdf`, which brings go-webengine (layout, a JavaScript engine,
+esbuild) into the module graph: the stripped gateway binary grows from 28.8 MB to 43.8 MB
+(**+52 %**), 60.2 MB unstripped. The README lists options under issue #97 (a build tag, or a
+separate `llmflow-report` command that renders the PDF from `format=json`); none is implemented.
 
 ## Upgrading to v0.19.0 {#upgrade}
 
