@@ -9,7 +9,7 @@ What a finance director, a lab manager or an organisation administrator gets fro
 [gateway]({{< relref "gateway.md" >}}) since **v0.13.0**: who used how much, in which
 unit, compared with the previous period, as a page, as a file, and next to what Slurm
 says about the batch jobs on the same GPUs. This page is written from the repository's
-README at tag v0.19.0 (the feature is from v0.13.0); nothing here was measured on a production cluster, and the charts
+README at tag v0.20.0 (the feature is from v0.13.0); nothing here was measured on a production cluster, and the charts
 were checked in a browser under the page's security policy, not by users.
 
 ## Who is charged: organisation, lab, team, project, user {#dimensions}
@@ -44,7 +44,7 @@ org "etabA" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.19.0 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.20.0 (with the key files present,
 and a pool and a model around it). Existing configurations stay valid: a lab is an
 attribute of a team, not a new nesting.
 
@@ -145,7 +145,7 @@ slurm {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.19.0 (with the file present).
+This block passes `llmflow-gateway check-config` v0.20.0 (with the file present).
 
 How the file is read:
 
@@ -167,7 +167,7 @@ How the file is read:
 
 ## What this does not do {#known-issues}
 
-Known at v0.19.0:
+Known at v0.20.0 (for a finance reader, a chargeback file and the monthly report, see [Decision reports]({{< relref "decision-reports.md" >}})):
 
 - **The binary grew, then shrank.** In v0.13.0 to v0.15.1 go-pdfkit's root package pulled
   in a widget toolkit the export never used. Fixed in v0.15.2 by go-pdfkit v0.20.0: the

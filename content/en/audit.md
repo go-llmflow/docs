@@ -13,7 +13,7 @@ as plainly as where they hold.
 
 ## A configuration {#configuration}
 
-This was run through `llmflow-gateway check-config` v0.19.0, with the key files
+This was run through `llmflow-gateway check-config` v0.20.0, with the key files
 present and a configuration (organisations, a pool and a model) around it.
 
 ```hcl
@@ -175,3 +175,10 @@ its team's).
 Soft-budget alerts are retried with exponential backoff, up to 6 attempts, and
 every webhook attempt carries the same `Idempotency-Key` so that a receiver can
 de-duplicate. Retries live in memory: a gateway stopped mid-retry does not resume.
+
+**Mail needs TLS since v0.20.0.** The SMTP session is refused, and nothing is sent, unless the
+relay offers STARTTLS (`tls = "starttls"`, the default), or speaks TLS from the first byte
+(`"implicit"`); `"none"` is accepted for a relay on the gateway's own host, elsewhere only with
+`allow_cleartext = true`. A relay without STARTTLS therefore fails every send until it is fixed
+or the choice is made knowingly: see the
+[migration note]({{< relref "decision-reports.md" >}}#smtp).

@@ -42,7 +42,7 @@ the cluster, as a model of class `guard` that clients cannot call. The classifie
 see the already-masked text. A guardrail that errs or times out refuses (503) by
 default. The generic **HTTP adapter is off by default**: it exists only when
 written, and then only with `allow_external = true`, because it sends prompts and
-completions out of the site. This block passes `check-config` v0.19.0:
+completions out of the site. This block passes `check-config` v0.20.0:
 
 ```hcl
 guardrail "secrets" {

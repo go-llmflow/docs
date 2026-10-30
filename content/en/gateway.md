@@ -13,7 +13,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.19.0.** The versions so far:
+**The current release is v0.20.0.** The versions so far:
 
 | Version | Content |
 | --- | --- |
@@ -45,11 +45,12 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.18.1](https://github.com/go-llmflow/gateway/releases/tag/v0.18.1) | **security fixes** (#100): a rolling window forgot spend when widened (#98), and an organisation admin could take over a person by granting them `viewer` (#99). See [Security]({{< relref "security.md" >}}#v0181). Upgrade if you use profiles |
 | [v0.18.2](https://github.com/go-llmflow/gateway/releases/tag/v0.18.2) | **security fix** (#104, PR #106): every role binding records its provenance; the first grant to a binding-less user, or to another organisation's user, needs a proxy admin. A `provenance` column is added at start-up. See [Security]({{< relref "security.md" >}}#v0182) |
 | [v0.19.0](https://github.com/go-llmflow/gateway/releases/tag/v0.19.0) | **soft quotas** (#96): warnings at 75 % and 95 % by default, usage headers, `GET /v1/me/usage`, `llmflow-status`, notifications; **fluids** (#101): measured energy attributed to consumers; **lending** (#102): guaranteed share against use. PostgreSQL migration: upgrade every replica. See [Soft quotas]({{< relref "workload-profiles.md" >}}#soft-quotas) and [Decision reports]({{< relref "decision-reports.md" >}}) |
+| [v0.20.0](https://github.com/go-llmflow/gateway/releases/tag/v0.20.0) | **decision reporting, parts 3 and 4** (#97): the `finance_viewer` role and cost centres, the chargeback CSV, adoption, the monthly decision report (PDF, XLSX; scheduled delivery to an export and by mail). **Behaviour change: SMTP now requires STARTTLS by default**, so a relay without it fails every send. The binary grows by 52 % (PDF engine). See [Decision reports]({{< relref "decision-reports.md" >}}) |
 
 **Which tag to take.** v0.13.1 was published **after** v0.14.0, and on a commit that
 already contains the HA code of v0.14.0 (it descends from it); v0.14.1 is the very same
 commit. A tag number going down in time is therefore not a downgrade here. Take
-**v0.14.1 or later** (today v0.19.0), not v0.13.1, so that your version number says
+**v0.14.1 or later** (today v0.20.0), not v0.13.1, so that your version number says
 what the binary holds. The HA code does nothing without an `ha` block.
 
 ```sh
@@ -138,6 +139,7 @@ is delegated by role:
 | --- | --- | --- |
 | `proxy_admin` | everything | everything the master key may |
 | `proxy_viewer` | everything | read every listing, report and fair-share state |
+| `finance_viewer` (since v0.20.0) | everything, reports only | read the reports of every organisation and nothing else; granted by a proxy admin only. See [Decision reports]({{< relref "decision-reports.md" >}}#finance) |
 | `org_admin` | one organisation | manage its teams, projects, keys, budgets and users below it |
 | `team_admin` | one team | manage its projects and keys, grant `member` and `viewer` on the team |
 | `member` | one team | create keys (owned by the member), list and revoke their own keys |
@@ -182,6 +184,7 @@ token.
 | `GET /v1/me/usage` (the caller's own key or token) | the caller's windows, percentages and thresholds; see [Soft quotas]({{< relref "workload-profiles.md" >}}#soft-quotas) |
 | `GET`, `PUT`, `DELETE /admin/soft-quotas/...` (gateway, `orgs/{name}`, `profiles/{name}`) | soft-quota thresholds, audited |
 | `GET /admin/fluids`, `GET /admin/lending` | decision reports (since v0.19.0): see [Decision reports]({{< relref "decision-reports.md" >}}) |
+| `GET /admin/chargeback`, `GET /admin/adoption`, `GET /admin/decision` | chargeback CSV by cost centre, adoption (small cells suppressed), the monthly decision report as PDF, XLSX or JSON (since v0.20.0): see [Decision reports]({{< relref "decision-reports.md" >}}#chargeback) |
 | `POST /admin/budgets/release-replica` | release the grants of a dead replica (an org admin: on their organisation's budgets); only a proxy admin also drops its registration; audited |
 | `GET /admin/spend?from=&to=&group_by=&format=` | spend report grouped by any of `org`, `lab`, `team`, `project`, `user`, `key`, `model`, `pool`, `tag`, `day`, `profile`; `json`, `csv` or `parsable2`; filtered to what the caller may see; 60 s deadline |
 | `GET /admin/export?from=&to=&format=csv\|xlsx\|pdf` | the report as a download, audited; see [Finance reports]({{< relref "finance-reports.md" >}}#exports) |
@@ -197,7 +200,7 @@ webhook and/or by e-mail through an SMTP relay.
 The configuration is written in
 [HCL2 native syntax](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md);
 the repository's `examples/gateway.hcl` is parsed by its test suite, so it stays
-valid. This extract was run through `llmflow-gateway check-config` v0.19.0 (with
+valid. This extract was run through `llmflow-gateway check-config` v0.20.0 (with
 the key files present):
 
 ```hcl
@@ -252,7 +255,7 @@ model "llama-3.3-70b" {
 | `audit { signing_key_file, checkpoint_interval, anchor, anchor_max_lag, retention, prune_interval }`, `export "<name>" { kind, endpoint, bucket, ... }` | the admin audit log and where its checkpoints, and the request logs, are exported; see [Audit and logging]({{< relref "audit.md" >}}) |
 | `logging "<name>" { teams, destination, content, ... }` | per-team request logs; content is off by default |
 | `policy "<name>" { teams, require, require_tags, max_body_bytes, max_response_bytes }` | required fields and tags, and per-team or per-key size limits (`POST /admin/keys {"policy"}`) |
-| `alerts { webhook_url, webhook_token_file, smtp { server, from, to, username, password_file } }` | where soft-budget alerts go |
+| `alerts { webhook_url, webhook_token_file, smtp { server, from, to, username, password_file, tls, allow_cleartext, timeout } }` | where soft-budget alerts go. **Since v0.20.0 the SMTP session requires STARTTLS by default**: see [the migration note]({{< relref "decision-reports.md" >}}#smtp) |
 | `auth_failures_per_minute` | failed authentications allowed per client network before a 429 (default 60, 0 disables) |
 
 Design decisions of the format:
@@ -401,7 +404,7 @@ capability and never forwards a client's `Authorization` or `x-api-key`. This is
 legal advice: check your institution's contracts with your DPO.
 
 This block, from the gateway's `examples/anthropic.hcl` with this page's names, passes
-`llmflow-gateway check-config` v0.19.0 (with the key files present, and the
+`llmflow-gateway check-config` v0.20.0 (with the key files present, and the
 organisations, the `b300` pool and the local `llama-3.3-70b` model of that example
 around it):
 
@@ -551,7 +554,7 @@ stored. A replica that never comes back is released with
 `POST /admin/budgets/release-replica {"replica": "<name>"}`, audited, by an org admin (that
 organisation's budgets) or a proxy admin (see [below](#budget-mid-period)).
 
-**Configuration.** The fragments below pass `llmflow-gateway check-config` v0.19.0 (with the
+**Configuration.** The fragments below pass `llmflow-gateway check-config` v0.20.0 (with the
 key files present, and organisations, pools and keys around them):
 
 ```hcl
@@ -710,7 +713,7 @@ org "etabA" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.19.0 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.20.0 (with the key files present,
 and a pool and a model around it).
 
 - **What the header may name.** A project **name**, looked up in the key's own team
@@ -746,7 +749,7 @@ true`. Spans carry metadata only (organisation, team, key id, model, pool, prior
 status, token counts, guardrail verdicts), **never a prompt or an answer**.
 
 This block, with the fallbacks and audio settings above, passes
-`llmflow-gateway check-config` v0.19.0 (with the key files present, and
+`llmflow-gateway check-config` v0.20.0 (with the key files present, and
 organisations, pools and models around it):
 
 ```hcl
@@ -802,7 +805,7 @@ ha {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.19.0 (with the key, DSN and secret
+This block passes `llmflow-gateway check-config` v0.20.0 (with the key, DSN and secret
 files present, and organisations, a pool and a model around it). `check-config` also
 checks the block: the postgres store, an advertised IP literal inside `peer_networks`,
 `heartbeat` at most a third of `lease_ttl`, `forward_timeout` at most a heartbeat, and a
@@ -827,7 +830,7 @@ This form is **tested live**: bench v0.6.0's
 against PostgreSQL 18.6 with two gateway v0.16.1 processes configured from PEM files
 (ECDSA and Ed25519 leaves, SAN `llmflow-ha`, key files at mode 0600, which the loader
 requires): 8 of 8 admissions sent to the non-owner were forwarded to the owner over mTLS.
-`check-config` v0.19.0 also accepts such files. The
+`check-config` v0.20.0 also accepts such files. The
 repository's README also shows the certificate and key as `vault:` references, such as
 `vault:secret/llmflow/ha#cert`; the loader accepts both a file path and a `vault:`
 reference, and that form needs a `vault` block which is not shown here and was not run.
@@ -950,7 +953,7 @@ model "llama" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.19.0 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.20.0 (with the key files present,
 and organisations around it).
 
 - **Convention.** A job serves model `M` on port `P` when its name (or else its comment)
@@ -1082,7 +1085,7 @@ check use `llmflow-gateway audit verify` with a public key kept elsewhere (see
 server in front of the tool servers of the configuration. It speaks the Streamable
 HTTP binding of revision **2026-07-28** and, for older clients, the initialize
 handshake of **2025-11-25** (and 2025-06-18, 2025-03-26). A client authenticates
-with its virtual key. This block passes `llmflow-gateway check-config` v0.19.0
+with its virtual key. This block passes `llmflow-gateway check-config` v0.20.0
 (with the key files present, and an `sso` block, organisations, a pool and a model
 around it):
 
@@ -1318,7 +1321,7 @@ PostgreSQL. The estimate undercounts tool-call and reasoning tokens.
 
 ## Limitations {#limitations}
 
-Open defects of v0.19.0, as the repository lists them:
+Open defects of v0.20.0, as the repository lists them:
 
 1. **Rate limits and the key cache are per process.** Since v0.14.0 the fair-share
    state is shared between replicas **with an `ha` block** (see
