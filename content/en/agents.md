@@ -221,6 +221,15 @@ file's `env` block make Claude Code refuse any other destination (Claude Code v2
 or later). `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1` adds the gateway's models to
 the `/model` picker.
 
+### Usage warnings in the status line {#claude-code-statusline}
+
+Since gateway v0.19.0, a person under a [workload profile]({{< relref "workload-profiles.md" >}})
+can see their session and weekly usage in Claude Code's status line with `llmflow-status`, a
+`statusLine` command with a `refreshInterval`. The gateway does **not** emit the
+`anthropic-ratelimit-unified-*` headers Claude Code's own warnings read, since their format is
+not public. The recipe, and what Continue gets (response headers only), are in
+[Soft quotas]({{< relref "workload-profiles.md" >}}#soft-quotas).
+
 ### Subscriptions {#claude-code-subscriptions}
 
 While a gateway credential or an `apiKeyHelper` is active, requests carry that
