@@ -120,7 +120,7 @@ session_window  = "5h"  # 5m..24h in whole 5 minutes
 ```
 
 This block, with `budgets`, models and organisations around it, passes
-`llmflow-gateway check-config` v0.18.2. HCL allows one attribute only in a block written on
+`llmflow-gateway check-config` v0.19.0. HCL allows one attribute only in a block written on
 one line (`profile "q" { days = 0.25 }`): write one attribute per line. A person with
 `default_profile` gets their budgets at their first request, which waits up to 3 s for them
 to arm, once. The budgets API neither lists nor changes the profile budgets
@@ -172,8 +172,116 @@ when each request was admitted, so a change of profile never rewrites history.
 - Fixed on the way: a budget deleted and created again now re-reads its period's spend from
   the records.
 
+## Soft quotas: warnings before a window runs out (since v0.19.0) {#soft-quotas}
+
+The hard budgets never let a window be exceeded; soft quotas tell people **before** it runs
+out, the way Anthropic does for its five-hour session and weekly limits. By default a person is
+warned once past **75 %** and again past **95 %** of a window (Anthropic's values: see
+[usage warnings in Claude Code](https://code.claude.com/docs/en/claude-apps-gateway-spend-limits.md)).
+The windows are the profile's session and week, and a money budget with a user scope.
+
+**What is not done.** Claude Code's own warnings read `anthropic-ratelimit-unified-*` response
+headers, whose exact format is documented only in a Claude apps gateway's own protocol
+reference, which is not public. **The gateway does not emit them and guesses nothing.** The
+warnings reach people through the channels below, which the gateway controls.
+
+| Channel | What it is |
+| --- | --- |
+| response headers | on every successful response, for the caller's own windows only: `X-Llmflow-Usage-Session`, `-Session-Reset` (RFC 3339), `-Week`, `-Week-Reset`, and past a threshold `X-Llmflow-Usage-Warning` (French with `Accept-Language: fr`) |
+| `GET /v1/me/usage` | with the caller's own key or token, rate limited (60 a minute per key), `no-store`: windows, percentages, reset times, the profile and the thresholds in force |
+| `llmflow-status` | a small program for Claude Code's `statusLine`, below |
+| notifications | at each threshold, **once per window**: a webhook (with an `Idempotency-Key`) and/or mail from the `alerts` block, to the person when their user name is an address and, with `notify = ["user", "team_admin"]`, to the administrators of their teams; at least once, shared by the replicas |
+| admin UI | `/ui/softquotas`: who is above a threshold in the current windows, and the thresholds of each level |
+
+**The hard limit** now speaks as Anthropic's does: `429` with "You've hit your session
+allowance" (or weekly) and its reset time, `retry-after` in integer seconds, the existing
+`X-Llmflow-Budget-Reset`, and `x-should-retry: false`; Claude Code stops retrying above 60
+seconds and shows the message at once.
+
+**Thresholds**, from the most general level to the most specific, which wins:
+
+```hcl
+soft_quotas {
+  warn_at  = [75, 95]          # the gateway; Anthropic's values when omitted
+  language = "fr"              # of warnings when a request names none (en by default)
+  timezone = "Europe/Paris"    # the zone reset times are spelled in (UTC by default)
+  notify   = ["user", "team_admin"]   # who is mailed (user by default)
+}
+org "etabA" {
+  share = 0.8125
+  soft_quotas {
+    warn_at = [80, 95]         # one organisation
+  }
+}
+profile "2d" {
+  days = 2
+  session_share = 0.5
+  soft_quotas {
+    warn_at = [50, 75, 95]     # one profile
+  }
+}
+```
+
+This block, in a complete file, passes `llmflow-gateway check-config` v0.19.0; with
+`warn_at = [95, 75]` it answers "want a strictly increasing list". A user budget takes `warn_at`
+from the budgets API (`PUT /admin/budgets`, `"warn_at": [60]`, user scope only). Resolution:
+gateway, organisation, profile, budget (the budget wins). **One to five thresholds, integers
+from 1 to 99, strictly increasing; `[]` turns warnings off for that level.** An organisation
+administrator sets their organisation's thresholds in the UI (`PUT
+/admin/soft-quotas/orgs/{name}`); the gateway default and the profiles' are the proxy
+administrators' (`PUT /admin/soft-quotas/gateway` and `/profiles/{name}`); `DELETE` goes back to
+the configured value. Every change is audited and the other replicas apply it within 15 s.
+
+**Once per window instance, across replicas.** A threshold fires once per window instance,
+decided by one row per person, window and threshold in PostgreSQL. The session is a rolling
+window with no start, so a fired threshold is **armed again only when usage falls below it by a
+hysteresis** (5 points, or half the threshold when smaller: 75 re-arms below 70). When several
+thresholds are crossed at once only the highest is notified. The repository's property test
+(three replicas, random kills) checks exactly one firing per week and per episode, with a planted
+control that fires more than once; this page did not run it.
+
+**Claude Code's status line.** Install `llmflow-status`:
+
+```sh
+go install github.com/go-llmflow/gateway/cmd/llmflow-status@latest
+```
+
+and add to `~/.claude/settings.json`
+([status line](https://code.claude.com/docs/en/statusline.md)):
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "llmflow-status",
+    "refreshInterval": 30
+  }
+}
+```
+
+`refreshInterval` re-runs the command every N seconds, so the usage and reset time stay current
+while the session is idle. The program reads the status line's JSON on stdin, calls
+`/v1/me/usage` at `ANTHROPIC_BASE_URL` with `ANTHROPIC_AUTH_TOKEN` (else `ANTHROPIC_API_KEY`) and
+prints, for example, `session 85% · 15:45 │ week 40% · Mon 00:00`, green below the first
+threshold, yellow past some, red past the last (`NO_COLOR` or `--no-color` for none). It caches
+the answer for 30 s in the user cache directory (no secret in it). **On any error or timeout (2 s)
+it prints nothing and exits 0**, and it never prints the credential; it refuses to send it over
+plain http except to this machine, and never follows a redirect. If an `apiKeyHelper` supplies
+the credential and neither variable is set in the status line's environment, pass
+`--token-file`: the status line documentation does not say which variables the command inherits.
+`llmflow-status --help` (v0.19.0) lists `--url`, `--token-file`, `--ttl`, `--timeout`, `--lang`,
+`--allow-http`, `--no-color` and `--verbose`. This page installed it; it did not run it against a
+gateway.
+
+**Continue** and any client without a status line show no native warning: read the
+`X-Llmflow-Usage-*` headers from your own tooling, or `GET /v1/me/usage`; the notifications reach
+people regardless of the client.
+
+**Upgrading.** See [Decision reports]({{< relref "decision-reports.md" >}}#upgrade). The refusal
+text of a profile changed (Anthropic's wording, with the numbers in days in parentheses). **Not
+measured:** the admission benchmark was not run for this change (the machine was loaded); the
+request path adds one profile lookup and a handful of in-memory reads per request.
+
 ## What is not here {#not-yet}
 
-Soft quotas and warnings at 75 % and 95 % of an allowance are **not shipped** (they are
-tracked in gateway#96). No performance figure for profiles exists, and no live test of them
-is cited on this page.
+No performance figure for profiles exists, and no live test of them is cited on this page.
