@@ -66,9 +66,9 @@ This configuration, in a complete file, passes `llmflow-gateway check-config` v0
   `kwh_idle`, `kwh`, `fluids_cost` and `currency`: three units in three columns, never added.
   Proxy roles read every organisation; `org_admin` and org-level `viewer` read their own;
   team-level roles get 403. Periods are capped at 366 days.
-- **Batch jobs.** A parser for `sacct -P -o Account,ConsumedEnergyRaw` (joules) exists; Slurm
-  notes the value is a job's real energy only for an exclusive allocation. **It is not yet
-  wired into the reconciliation sheet.**
+- **Batch jobs.** A parser for `sacct` energy (joules) exists; Slurm notes the value is a job's
+  real energy only for an exclusive allocation. Since v0.21.0 it feeds the decision report's
+  [energy reconciliation](#energy-reconciliation).
 
 ## Lending: guaranteed share against use {#lending}
 
@@ -203,6 +203,61 @@ The sink is the state: an object that exists is delivered, and the marker
 nothing twice, and a report whose upload is still in flight is not typeset again. Every delivery
 is audited **when the object is seen in the export**, not when it is queued, and so is every mail
 (period, format, size, never the content).
+
+## Energy reconciliation (Slurm vs DCGM) {#energy-reconciliation}
+
+Since **v0.21.0** (#113) the decision report compares, **per partner**, the energy Slurm
+accounted for the partner's jobs with the IT energy the gateway attributed from the DCGM
+counters. The difference is **DCGM minus Slurm**, in kWh and as a percentage of Slurm's figure
+(`n/a` when Slurm reports nothing). It is a table in the PDF, a sheet "Energy reconciliation" in
+the XLSX and `energy_reconciliation` in the JSON; an unreadable input is said in the report, not
+hidden. Nothing changes without `sacct_file`.
+
+**The setting** is the top-level `slurm` block, the same one as the
+[Slurm reconciliation of the finance reports]({{< relref "finance-reports.md" >}}#slurm), with
+a new attribute:
+
+```hcl
+slurm {
+  sacct_file = "/var/lib/llmflow/sacct.txt"   # absolute path (a relative one is refused)
+  accounts   = { "phys-a" = "etabA" }          # Slurm account -> partner (else by name)
+}
+```
+
+In a complete file this passes `llmflow-gateway check-config` v0.21.0; with
+`sacct_file = "relative/sacct.txt"` it answers "want an absolute path".
+
+**The file** is produced by exactly this command, in UTC, with `-S` and `-E` spanning the month:
+
+```sh
+TZ=UTC sacct -a -X -P -o JobID,Account,Start,End,ConsumedEnergyRaw -S <from> -E <to>
+```
+
+- `-S` and `-E` select jobs **active** in the window, not jobs that ended in it; `End` is
+  `Unknown` for a running job; timestamps are `YYYY-MM-DDThh:mm:ss` (the sacct manual).
+- The header **must** name `JobID`, `Account`, `Start`, `End` and `ConsumedEnergyRaw`: without the
+  instants a job cannot be placed in a period, and without `JobID` steps cannot be told from
+  allocations. Job steps (a `JobID` with a `.`) are skipped even without `-X`. A row without energy
+  counts as nothing, a job that never started is left out, and a value with a unit prefix is
+  refused (the base is not documented).
+
+**Proration.** The scheduled monthly report reads the same file every month, so **each job's
+energy is attributed to the report period in proportion to the share of its run inside it,
+assuming constant power** (the assumption is printed next to the table). A job entirely outside
+counts 0; a running job has accrued its energy up to the file's latest instant.
+
+**Coverage.** The report states how much of the file it used: jobs used, prorated, outside and
+running, and the earliest and latest instant of the file. **When the file does not cover the
+period** (its span reaches less than half of it, or no job falls in it) the report says so, sets
+`compared: false` and prints **no difference**.
+
+**Why a difference is not an error.** Slurm counts a job's allocation, DCGM counts the GPUs: per
+the sacct manual, "only in the case of an exclusive job allocation does this value reflect the
+job's real energy consumption". A difference is a question to ask, not a fault to report.
+
+Organisation admins see their own partner only, plus the file's span. The parser is bounded (16 MiB,
+500,000 lines, 8 KiB per line) and fuzzed in the repository; this page did not run the reconciliation
+on a real `sacct` output, only `check-config` on the block.
 
 ## Bounds of the heavy reports (#111) {#bounds}
 
