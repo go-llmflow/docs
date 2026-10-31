@@ -120,7 +120,7 @@ session_window  = "5h"  # 5m..24h in whole 5 minutes
 ```
 
 This block, with `budgets`, models and organisations around it, passes
-`llmflow-gateway check-config` v0.23.0. HCL allows one attribute only in a block written on
+`llmflow-gateway check-config` v0.23.1. HCL allows one attribute only in a block written on
 one line (`profile "q" { days = 0.25 }`): write one attribute per line. A person with
 `default_profile` gets their budgets at their first request, which waits up to 3 s for them
 to arm, once. The budgets API neither lists nor changes the profile budgets

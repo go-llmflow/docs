@@ -14,6 +14,10 @@ written from the gateway's README and the v0.23.0 release notes. The provider's 
 written but **have not been run** (the machine's load was above the gate), so no performance figure
 is given.
 
+Since **v0.23.1** the gateway runs on go-llmflow/aws v0.1.1: **signing uses a cached derived
+key** (keyed by the day, region, service and a SHA-256 of the secret, bounded, no secret stored),
+so Bedrock signing is level with the AWS SDK's; behaviour is unchanged.
+
 ## Configuration {#config}
 
 ```hcl
@@ -48,7 +52,7 @@ model "claude-sonnet-bedrock" {
 
 This configuration, with `pii` and `hide_secrets` guardrails, a pool and organisations around it
 (and the credential files present, with `session_token_file` omitted), passes
-`llmflow-gateway check-config` v0.23.0, which also loads every credential and prints no value.
+`llmflow-gateway check-config` v0.23.1, which also loads every credential and prints no value.
 The README's own example uses `vault:` references for etabA and needs a `vault` block.
 
 - **`region`.** The endpoint is derived from it and is always https. `endpoint_override` is for a
