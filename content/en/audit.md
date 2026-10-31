@@ -13,7 +13,7 @@ as plainly as where they hold.
 
 ## A configuration {#configuration}
 
-This was run through `llmflow-gateway check-config` v0.22.1, with the key files
+This was run through `llmflow-gateway check-config` v0.22.2, with the key files
 present and a configuration (organisations, a pool and a model) around it.
 
 ```hcl
