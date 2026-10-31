@@ -17,6 +17,7 @@ Published at <https://go-llmflow.github.io/docs/>:
   page, CSV/XLSX/PDF exports, reconciliation with Slurm.
 - **Security**: the audit and chaos run of 2026-10-26 (gateway v0.9.0).
 - **Workload profiles** (gateway v0.18.0): days per week, enforced by hard budgets.
+- **Libraries**: `aws` v0.1.0 (SigV4 and event streams).
 - **Decision reports** (gateway v0.22.2): fluids, lending, chargeback, adoption, the monthly report, energy reconciliation, quotas and profiles, FinOps variance, privacy, SMTP migration; soft quotas on the profiles page.
 - **Gateway** (v0.22.2): HCL2 configuration, hierarchy and roles, admin API, admin web UI, MCP gateway,
   fair-share with borrowing, prefix-cache isolation, overhead A/B against LiteLLM,
