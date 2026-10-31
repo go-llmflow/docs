@@ -5,14 +5,14 @@ weight: 10
 
 # aws {#aws}
 
-[`github.com/go-llmflow/aws`](https://github.com/go-llmflow/aws) **v0.1.0** is AWS Signature
+[`github.com/go-llmflow/aws`](https://github.com/go-llmflow/aws) **v0.1.1** is AWS Signature
 Version 4 request signing and AWS event-stream decoding, in pure Go, **standard library only**:
 no aws-sdk-go, no cgo, no network, no files. It has two generic packages and no service-specific
-code. This page is written from the repository's README and the v0.1.0 release notes; none of it
-was run here.
+code. This page is written from the repository's README and the v0.1.0 and v0.1.1 release notes (v0.1.1 has no API
+change); none of it was run here.
 
 ```sh
-go get github.com/go-llmflow/aws@v0.1.0
+go get github.com/go-llmflow/aws@v0.1.1
 ```
 
 ## What it is for
@@ -109,6 +109,24 @@ the test suite pins that it is rejected as printed and decodes once four bytes a
 
 ## Performance
 
-**Not measured yet.** Benchmarks against aws-sdk-go-v2 are in a separate `_bench/` module, so
-the library has no dependency, but the machine's load was above the measurement gate when v0.1.0
-was released. No figure is given here.
+Benchmarks against aws-sdk-go-v2 are in a separate `_bench/` module, so the library has no
+dependency; `TestSameSignature` and `TestSameWire` check that both sides do the same work.
+
+**These figures are indicative only.** The rule is to measure when the machine's one-minute load
+average is at most 4; these runs (2026-11-01, Apple M4 Max, one core, `-count 6` or `8`) started at
+load 3.6 to 4.3 and **ended at 4.4 to 6.8**, so they will be replaced by an idle run. They are the
+README's, not re-run here.
+
+| Benchmark | go-llmflow/aws | aws-sdk-go-v2 | |
+| --- | --- | --- | --- |
+| decode 1000 messages of 120 B | 283 us, 6.0 k allocs | 815 us, 40 k allocs | 2.9x faster |
+| decode 1000 messages of 8 KiB | 1.27 ms | 2.87 ms | 2.3x faster |
+| decode 1000 messages of 256 KiB | 42.0 ms | 47.6 ms | 1.13x faster |
+| encode one message | 108 ns, 1 alloc | 395 ns, 19 allocs | 3.7x faster |
+| sign a Bedrock request | 2.99 us, 49 allocs | 2.97 us, 51 allocs | equal within +/-2 % |
+
+Signing was 22 % slower than the SDK in the first run (3.57 us against 2.94 us), because the SDK
+derives the signing key once per day and region/service and v0.1.0 derived it on every request.
+**v0.1.1 caches derived keys** and closes the gap. The cache is stricter than the SDK's: an entry
+is keyed by the day, the region, the service **and a SHA-256 of the secret** (two credentials that
+share an access key ID never share a key), it is bounded to 256 entries, and it holds no secret.
