@@ -17,11 +17,11 @@ go get github.com/go-llmflow/aws@v0.1.0
 
 ## What it is for
 
-The [gateway]({{< relref "gateway.md" >}}) is planned to use it for an **Amazon Bedrock**
-provider (gateway issue #89). **That work is in progress and not released: the gateway does not
-support Bedrock today**, and nothing on this page says otherwise. (The library's README says the
-gateway "uses them for its Amazon Bedrock provider" and "pre-release (no tag yet)"; the first is
-the plan, the second predates the v0.1.0 tag.)
+The [gateway]({{< relref "gateway.md" >}}) uses it for its
+[Amazon Bedrock provider]({{< relref "bedrock.md" >}}) **since gateway v0.23.0**: SigV4 signing of
+the InvokeModel requests and decoding of the response event stream. The library's CI has an
+`sdk-witness` job that compares its signatures with aws-sdk-go-v2's on the gateway's Bedrock
+paths. (The README of the v0.1.0 tag still says "pre-release (no tag yet)"; it predates the tag.)
 
 | Package | What |
 | --- | --- |
