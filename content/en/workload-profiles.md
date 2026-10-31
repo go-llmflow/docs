@@ -120,7 +120,7 @@ session_window  = "5h"  # 5m..24h in whole 5 minutes
 ```
 
 This block, with `budgets`, models and organisations around it, passes
-`llmflow-gateway check-config` v0.22.1. HCL allows one attribute only in a block written on
+`llmflow-gateway check-config` v0.22.2. HCL allows one attribute only in a block written on
 one line (`profile "q" { days = 0.25 }`): write one attribute per line. A person with
 `default_profile` gets their budgets at their first request, which waits up to 3 s for them
 to arm, once. The budgets API neither lists nor changes the profile budgets
@@ -269,7 +269,9 @@ it prints nothing and exits 0**, and it never prints the credential; it refuses 
 plain http except to this machine, and never follows a redirect. If an `apiKeyHelper` supplies
 the credential and neither variable is set in the status line's environment, pass
 `--token-file`: the status line documentation does not say which variables the command inherits.
-`llmflow-status --help` (v0.19.0) lists `--url`, `--token-file`, `--ttl`, `--timeout`, `--lang`,
+Since v0.22.2 the fields it reads are pinned by a contract test against the real gateway
+(`cmd/llmflow-status/testdata/me_usage.contract.json`), so a change to `/v1/me/usage` that would
+break the status line fails the gateway's own tests. `llmflow-status --help` (v0.19.0) lists `--url`, `--token-file`, `--ttl`, `--timeout`, `--lang`,
 `--allow-http`, `--no-color` and `--verbose`. This page installed it; it did not run it against a
 gateway.
 
