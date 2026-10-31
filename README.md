@@ -17,7 +17,7 @@ Published at <https://go-llmflow.github.io/docs/>:
   page, CSV/XLSX/PDF exports, reconciliation with Slurm.
 - **Security**: the audit and chaos run of 2026-10-26 (gateway v0.9.0).
 - **Workload profiles** (gateway v0.18.0): days per week, enforced by hard budgets.
-- **Libraries**: `aws` v0.1.0 (SigV4 and event streams).
+- **Libraries**: `aws` v0.1.1 (SigV4 and event streams).
 - **Amazon Bedrock** (gateway v0.23.0): Claude on Bedrock under hard budgets.
 - **Decision reports** (gateway v0.23.0): fluids, lending, chargeback, adoption, the monthly report, energy reconciliation, quotas and profiles, FinOps variance, privacy, SMTP migration; soft quotas on the profiles page.
 - **Gateway** (v0.23.0): HCL2 configuration, hierarchy and roles, admin API, admin web UI, MCP gateway,
