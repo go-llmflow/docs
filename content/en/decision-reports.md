@@ -160,8 +160,10 @@ currency on a row of its own** (`provider_cost`, `provider_currency`).
 requests, and per model the active people and requests. **Counts only**: no name, key or content
 leaves it; a service key's request counts as a request and as no one. **Small cells are
 suppressed**: a day, a week or a model used by fewer than *k* distinct people is returned without
-counts (`suppressed`), models suppressed together are merged into `(other models)` with their
-requests, and the overall figure is hidden below *k*. *k* is `adoption_min_users` (top level,
+counts (`suppressed`), models suppressed together (a single one too, since v0.22.1) are merged into
+`(other models)` with their requests when they stand for at least *k* distinct people, and the
+overall figure is hidden below *k*; the days, weeks and models are suppressed together so that no
+hidden cell can be recovered by subtraction (see [Privacy](#privacy)). *k* is `adoption_min_users` (top level,
 **default 5, at least 2**; `check-config` v0.20.0 refuses 1: "a figure over one person is that
 person").
 
@@ -270,17 +272,30 @@ person**.
   profile or kind: when **exactly one lab is hidden, the smallest shown lab is hidden too**; when
   the partner's people outside the shown labs are 1 to k-1, **the partner row is hidden**. This is
   the mechanism of the *ESSnet Handbook on Statistical Disclosure Control* (Hundepool et al.),
-  §5.3, p. 175, as the release notes cite it. The README is candid that it could not open that
-  handbook (the URLs it tried answered 404), so its rule is "the textbook mechanism as summarised
-  there, not a quoted algorithm"; this page did not open the handbook either. The repository's
-  fuzz test `FuzzQuotaSubtraction` checks that no published parent minus its published children
-  is a value from fewer than k people.
+  §5.3, p. 175: protecting the unsafe cells is "primary suppression", and to ensure these cannot
+  be derived by subtractions from published marginal totals, additional cells are selected for
+  "secondary suppression" (the README quotes it, with the handbook's PDF as its source; this page
+  did not open the handbook itself). The rule in the gateway is a simpler, more conservative one
+  than the handbook's optimal algorithms. The repository's fuzz test `FuzzQuotaSubtraction`
+  checks that no published parent minus its published children is a value from fewer than k
+  people.
 - **The adoption "(other models)" fix, since v0.20.0.** The merged row now shows a count only
   when the **distinct** people across the merged models (a union measured by the store) reach k.
   Before, two rare models used by the same person showed that person's requests.
-- **Known limit (open): linked tables.** In adoption, the daily or weekly totals minus the shown
-  models still bound the merged models' requests. This is the handbook's "linked tables" case, and
-  the README describes it as open.
+- **Adoption: secondary suppression on its linked tables (since v0.22.1).** Requests add up: the
+  **days**, the **weeks** and the **models** each sum to the period's requests, and **a week is
+  the sum of its days**. A hidden day, week or model would therefore be the total (or its week)
+  minus the shown cells. For each of these sums, **while its hidden cells stand for 1 to k-1
+  distinct people** (a union counted by the store, never a sum of cells), **the smallest shown
+  cell of that sum is hidden too**, until nothing changes. **Hidden models, even a single one, are
+  merged into "(other models)"**, which carries counts only when the distinct people over them are
+  k or more. A store that cannot count a union is answered by the largest hidden cell, a lower
+  bound, so it hides at least as much. `FuzzAdoptionSubtraction` checks, against people counted
+  from the records, that no published sum minus its shown parts comes from 1 to k-1 people, and
+  a control test shows the check fails without the rule. In v0.22.0 this was listed as a known
+  limit (the "linked tables" case of the handbook); **it is fixed in v0.22.1**.
+- **Upgrade note.** Because of this rule, **some days, weeks and models that v0.22.0 showed are
+  now suppressed**, in `GET /admin/adoption` and in the decision report.
 
 ## Energy reconciliation (Slurm vs DCGM) {#energy-reconciliation}
 
@@ -387,6 +402,9 @@ esbuild) into the module graph: the stripped gateway binary grows from 28.8 MB t
 separate `llmflow-report` command that renders the PDF from `format=json`); none is implemented.
 
 ## Upgrading {#upgrade}
+
+**To v0.22.1:** no schema change; some adoption cells that v0.22.0 showed are now suppressed
+(see [Privacy](#privacy)).
 
 **To v0.22.0:** new tables are created at start-up; soft-quota events are complete from this
 release on.
