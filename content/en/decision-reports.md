@@ -204,6 +204,84 @@ nothing twice, and a report whose upload is still in flight is not typeset again
 is audited **when the object is seen in the export**, not when it is queued, and so is every mail
 (period, format, size, never the content).
 
+## Quotas and profiles in the report (since v0.22.0) {#quotas}
+
+Since **v0.22.0** (#114, which completes #97) the decision report has a section "Quotas and
+profiles" (PDF), the XLSX sheets `Soft quotas`, `Refusals`, `Profiles` and `Oversubscription`, and
+a `quotas` key in the JSON, per partner, lab (team group) and profile, for the period:
+
+- **Soft-quota notifications** by window (5 h session, week, budget) and threshold: events and
+  distinct people. Every notification is now logged durably (`llmflow_warn_events`); a backfill
+  copies the latest mark of each user, window and threshold that existed before the upgrade, so
+  **the log starts from there, and the report notes say so**. Events are complete from v0.22.0
+  on; earlier crossings come from the marks the state held. The outbox is not the source: it only
+  holds mail and webhooks when they are configured, and is pruned.
+- **Hard refusals** (429: a budget or a workload profile was exhausted: budget, profile session,
+  week or overflow), **counted per day, organisation, team and profile**, never per person. The
+  counts are kept in memory and written every 30 s and at shutdown (a crash loses at most 30 s of
+  counts; at most 4,096 distinct cells are held, the rest are counted under their kind). A failed
+  write keeps each count under its own day. `llmflow_denied_total` stays the live Prometheus view.
+- **Workload days assigned against used**, per profile: assigned days are the assignment history
+  overlapping the period (days of the period times days per week over 7); used days are the cost
+  divided by the profile's workday.
+- **Oversubscription over time**: for up to 70 sampled days (per week beyond that), the sum of
+  assigned days per week against the capacity of that day (trailing 7 days of pool load), not the
+  point-in-time ratio. The PDF shows peak, average and days above 1.0 per partner; the XLSX and
+  JSON carry every sampled day.
+
+## Budget against actual: FinOps variance (since v0.22.0) {#variance}
+
+A table per month, cost centre and unit (`Variance` sheet, `variance` key, "Budget against
+actual" section in the PDF). The README cites the FinOps Foundation's Budgeting (budget to
+actual; thresholds of 20 % Crawl, 15 % Walk, 12 % Run) and Forecasting (percentage variance is the
+primary metric); FOCUS defines no budget or variance column, so it is not used.
+
+- **Budgeted**: the declared org and team budgets (no per-model budget), prorated to the month by
+  days; a team budget wins over the organisation's.
+- **Estimated**: the weekly profile allowances (`profile_week` budgets) of the partner's people,
+  prorated the same way.
+- **Actual**: the [chargeback](#chargeback) figure of the cost centre and month, in GPU-hours
+  (milli-GPU-hour minor unit) and in each provider currency (cents). **Units are never added.**
+- **Variance** is actual minus budgeted (positive: over budget), as a minor-unit integer and as a
+  percentage of the budgeted amount (one decimal, half to even). Each amount is rounded once, half
+  to even.
+- A row beyond **`variance_threshold_pct`** (top level, **default 15**, above 0 and at most 1000)
+  is flagged:
+
+```hcl
+variance_threshold_pct = 15   # flag a row whose variance exceeds this percentage of the budget
+```
+
+In a complete file (with `adoption_min_users`, a fluids block, a profile and a cost centre
+around it) this passes `llmflow-gateway check-config` v0.22.0; `variance_threshold_pct = 0`
+answers "want a percentage above 0 and at most 1000".
+
+## Privacy: statistical disclosure control (since v0.22.0) {#privacy}
+
+The decision report is read by a steering committee, not by an auditor: **it carries no row per
+person**.
+
+- **The k-rule, on distinct people.** A cell is shown only with at least `adoption_min_users`
+  distinct people (default 5, at least 2). Refusal cells count **distinct people**, from
+  per-cell truncated SHA-256 user hashes (at most 1,000 per cell and day; a service key is a
+  refusal and no one), no longer refusals: one person refused five times is a cell of one.
+- **Secondary suppression.** A partner total and its labs are published together, so a partner
+  figure minus the shown labs could give a hidden lab back. Per partner and window, threshold,
+  profile or kind: when **exactly one lab is hidden, the smallest shown lab is hidden too**; when
+  the partner's people outside the shown labs are 1 to k-1, **the partner row is hidden**. This is
+  the mechanism of the *ESSnet Handbook on Statistical Disclosure Control* (Hundepool et al.),
+  §5.3, p. 175, as the release notes cite it. The README is candid that it could not open that
+  handbook (the URLs it tried answered 404), so its rule is "the textbook mechanism as summarised
+  there, not a quoted algorithm"; this page did not open the handbook either. The repository's
+  fuzz test `FuzzQuotaSubtraction` checks that no published parent minus its published children
+  is a value from fewer than k people.
+- **The adoption "(other models)" fix, since v0.20.0.** The merged row now shows a count only
+  when the **distinct** people across the merged models (a union measured by the store) reach k.
+  Before, two rare models used by the same person showed that person's requests.
+- **Known limit (open): linked tables.** In adoption, the daily or weekly totals minus the shown
+  models still bound the merged models' requests. This is the handbook's "linked tables" case, and
+  the README describes it as open.
+
 ## Energy reconciliation (Slurm vs DCGM) {#energy-reconciliation}
 
 Since **v0.21.0** (#113) the decision report compares, **per partner**, the energy Slurm
@@ -224,7 +302,7 @@ slurm {
 }
 ```
 
-In a complete file this passes `llmflow-gateway check-config` v0.21.0; with
+In a complete file this passes `llmflow-gateway check-config` v0.22.0; with
 `sacct_file = "relative/sacct.txt"` it answers "want an absolute path".
 
 **The file** is produced by exactly this command, in UTC, with `-S` and `-E` spanning the month:
@@ -308,7 +386,12 @@ esbuild) into the module graph: the stripped gateway binary grows from 28.8 MB t
 (**+52 %**), 60.2 MB unstripped. The README lists options under issue #97 (a build tag, or a
 separate `llmflow-report` command that renders the PDF from `format=json`); none is implemented.
 
-## Upgrading to v0.19.0 {#upgrade}
+## Upgrading {#upgrade}
+
+**To v0.22.0:** new tables are created at start-up; soft-quota events are complete from this
+release on.
+
+**To v0.19.0:**
 
 Start-up adds the tables of the soft quotas (`llmflow_warn_marks`, `llmflow_warn_levels`, and
 `warn_at` on `llmflow_budgets_v2`) and those of the fluids and the pool capacity history.
