@@ -52,7 +52,7 @@ model "claude-sonnet-bedrock" {
 
 This configuration, with `pii` and `hide_secrets` guardrails, a pool and organisations around it
 (and the credential files present, with `session_token_file` omitted), passes
-`llmflow-gateway check-config` v0.24.0, which also loads every credential and prints no value.
+`llmflow-gateway check-config` v0.24.1, which also loads every credential and prints no value.
 The README's own example uses `vault:` references for etabA and needs a `vault` block.
 
 - **`region`.** The endpoint is derived from it and is always https. `endpoint_override` is for a
@@ -121,19 +121,22 @@ per token") and two organisations sharing one credential.
 
 ## Data retention {#retention}
 
-**Do not read this provider as "Bedrock stores nothing".** An earlier claim to that effect, in the
-issue behind this feature, quoted a sentence that is not on the data protection, data retention or
-prompt caching pages the README opened on 2026-10-31. What the data retention page says, as the
-README words it:
+**Two AWS pages say different things, and both are quoted here.**
 
-- retention is a **mode per region and per account**: `none`, `default` or `aws_review`;
-- under `default`, "data may be retained for abuse detection purposes";
-- models requiring `aws_review` keep prompts and completions "within the AWS boundary for up to 30
-  days";
-- the content is "not shared with the model provider";
-- with cross-region inference, "retained inputs and outputs are stored in destination Regions".
+- The [Converse API reference](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html)
+  (opened 2026-11-01) says: "Amazon Bedrock doesn't store any text, images, or documents that you
+  provide as content. The data is only used to generate the response."
+- The data retention page of the Bedrock user guide (opened 2026-10-31) describes retention as a
+  per-region, per-account mode. As the README words it:
 
-Set `none` where the model allows it, use an EU region and an EU inference profile (`eu.anthropic...`)
+  - the **mode** is `none`, `default` or `aws_review`;
+  - under `default`, "data may be retained for abuse detection purposes";
+  - models requiring `aws_review` keep prompts and completions "within the AWS boundary for up to
+    30 days";
+  - the content is "not shared with the model provider";
+  - with cross-region inference, "retained inputs and outputs are stored in destination Regions".
+
+**Retention is therefore not "none" by default**, whatever the API reference's summary says. Set `none` where the model allows it, use an EU region and an EU inference profile (`eu.anthropic...`)
 to keep inference in the EU regions the profile lists (a geographic profile may route to another
 region of its geography), and **decide with your DPO**: prompts leave the site, which is why the
 guardrails are mandatory.

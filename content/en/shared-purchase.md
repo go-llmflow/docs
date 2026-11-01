@@ -79,7 +79,7 @@ borrower) and 20 % of the RTX machine.
 
 Two machines in one gateway: the B300 servers (apportioned by the organisations' own shares) and
 the RTX machine. This is `examples/two-machines.hcl`; it passes `llmflow-gateway check-config`
-v0.24.0 (with the three key files present).
+v0.24.1 (with the three key files present).
 
 ```hcl
 master_key_file     = "/etc/llmflow/master.key"
