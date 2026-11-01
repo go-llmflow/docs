@@ -19,8 +19,8 @@ Published at <https://go-llmflow.github.io/docs/>:
 - **Workload profiles** (gateway v0.18.0): days per week, enforced by hard budgets.
 - **Libraries**: `aws` v0.1.1 (SigV4 and event streams).
 - **Amazon Bedrock** (gateway v0.23.0): Claude on Bedrock under hard budgets.
-- **Decision reports** (gateway v0.23.2): fluids, lending, chargeback, adoption, the monthly report, energy reconciliation, quotas and profiles, FinOps variance, privacy, SMTP migration; soft quotas on the profiles page.
-- **Gateway** (v0.23.2): HCL2 configuration, hierarchy and roles, admin API, admin web UI, MCP gateway,
+- **Decision reports** (gateway v0.24.0): fluids, lending, chargeback, adoption, the monthly report, energy reconciliation, quotas and profiles, FinOps variance, privacy, SMTP migration; soft quotas on the profiles page.
+- **Gateway** (v0.24.0): HCL2 configuration, hierarchy and roles, admin API, admin web UI, MCP gateway,
   fair-share with borrowing, prefix-cache isolation, overhead A/B against LiteLLM,
   guardrails, limitations, roadmap.
 - **Guide: fair-share on a co-owned GPU cluster**: Slurm, vLLM, the gateway, VS Code

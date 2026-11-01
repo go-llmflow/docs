@@ -394,6 +394,13 @@ old behaviour knowingly. v0.20.0 `check-config` was run on these cases: `tls = "
 `mail.example.org` is refused ("it is for a relay on this host"); with `allow_cleartext = true`,
 or with a `127.0.0.1` relay, it is accepted. The live behaviour of the session was not run here.
 
+## One row per partner and pool {#per-pool}
+
+Since gateway v0.24.0, when a pool has [shares of its own]({{< relref "shared-purchase.md" >}}) the
+lending report and this report carry **a row per partner and pool**; the partner's own line is the
+totals, and its `Share` is the capacity-weighted mean of its pool shares. Fluids and chargeback
+allocate a pool's idle energy by THAT pool's shares.
+
 ## PDF and the network {#pdf-network}
 
 The PDF engine can fetch sub-resources (stylesheets, `@import`, images), and the report carries names
