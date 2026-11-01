@@ -172,7 +172,7 @@ person").
 `GET /admin/decision?from=&to=&format=pdf|xlsx|json` gathers the figures above for a period (at
 most 366 days) into the document a partnership's steering committee reads:
 
-- **PDF**, typeset by go-pdfkit's `html2pdf` v0.3.0: A4, page numbers, a table of contents, then
+- **PDF**, typeset by go-pdfkit's `html2pdf` v0.4.0 (offline, see [PDF and the network](#pdf-network)): A4, page numbers, a table of contents, then
   **one page per partner** (guaranteed capacity, use in share, borrowed and lent GPU-hours, net
   balance, inference GPU-hours against the previous period, fluids on measured energy, latency in
   share against borrowing, active people, cost centre), then the lending matrix, fluids, adoption,
@@ -393,6 +393,25 @@ the relay, or set `tls = "none"` (plus `allow_cleartext = true` off the local ho
 old behaviour knowingly. v0.20.0 `check-config` was run on these cases: `tls = "none"` with
 `mail.example.org` is refused ("it is for a relay on this host"); with `allow_cleartext = true`,
 or with a `127.0.0.1` relay, it is accepted. The live behaviour of the session was not run here.
+
+## PDF and the network {#pdf-network}
+
+The PDF engine can fetch sub-resources (stylesheets, `@import`, images), and the report carries names
+an organisation administrator sets (partner, cost centre, lab, profile). A name that reached the page
+as markup could have made the gateway send a request from inside the site's network (SSRF). Since
+gateway v0.23.2 two independent barriers hold:
+
+1. **Names are escaped.** Every name goes through `html/template`. `TestDecisionPDFFetchesNothing`
+   checks it by its effect: a report full of hostile names (`<link>`, `<img>`, `@import`, `<iframe>`,
+   `url()`) is rendered and a loopback server receives zero requests.
+2. **The renderer has no network.** The PDF is typeset with `html2pdf.Offline`
+   (go-pdfkit/html2pdf v0.4.0): it makes no network request and reads no `file:` URL. The report
+   needs none, its charts being inline SVG. `TestDecisionPDFOptionsAreOffline` hands a raw `<link>`
+   and `<img>` to the gateway's own options and gets zero requests, with two refusals counted.
+
+Both tests carry a control: with the default fetcher the same documents do reach the server, so a
+zero is evidence and not a blind spot. No exploitable path was found in v0.23.1; v0.23.2 removes the
+dependency on escaping alone.
 
 ## The PDF costs binary size {#binary-size}
 
