@@ -9,8 +9,9 @@ Since **gateway v0.23.0** (#89, #121) a model can be **Claude on Amazon Bedrock*
 same position as [Anthropic as an upstream]({{< relref "gateway.md" >}}#anthropic) and under the
 same hard-budget guarantee. The path is InvokeModel and InvokeModelWithResponseStream with the
 Anthropic Messages body, signed with SigV4 by [go-llmflow/aws]({{< relref "libraries/aws.md" >}}).
-**Claude model IDs only**: Converse, for other vendors' models, is a later change. This page is
-written from the gateway's README and the v0.23.0 release notes. The provider's benchmarks are
+Since **v0.25.0** other vendors' models (Mistral, Llama, Nova) are served too, through
+[Converse](#converse), at `/v1/chat/completions`. The InvokeModel path is **for Claude model IDs
+only**. This page is written from the gateway's README and the v0.23.0 and v0.25.0 release notes. The provider's benchmarks are
 written but **have not been run** (the machine's load was above the gate), so no performance figure
 is given.
 
@@ -52,7 +53,7 @@ model "claude-sonnet-bedrock" {
 
 This configuration, with `pii` and `hide_secrets` guardrails, a pool and organisations around it
 (and the credential files present, with `session_token_file` omitted), passes
-`llmflow-gateway check-config` v0.24.1, which also loads every credential and prints no value.
+`llmflow-gateway check-config` v0.25.0, which also loads every credential and prints no value.
 The README's own example uses `vault:` references for etabA and needs a `vault` block.
 
 - **`region`.** The endpoint is derived from it and is always https. `endpoint_override` is for a
@@ -72,8 +73,12 @@ The README's own example uses `vault:` references for etabA and needs a `vault` 
   start-up. A `credentials { ... }` block is the default for organisations without their own.
 - **`allow_external = true`** stays mandatory, as do the pre-call `pii` and `hide_secrets`
   guardrails.
-- **Routes.** A Bedrock model is reachable at `/v1/messages` only. **`/v1/chat/completions`
-  answers 400**, as for the Anthropic provider. `/v1/messages/count_tokens` is not offered: it
+- **`api`.** `api = "invoke"` or `api = "converse"`, per model, inferred from `model_id`: an
+  Anthropic ID is `invoke`, any other vendor's is `converse`. Set it by hand for an application
+  inference profile, which does not name its vendor.
+- **Routes.** A model is reachable at its own route only. An `invoke` (Claude) model is at
+  `/v1/messages`, and **`/v1/chat/completions` answers 400** for it, as for the Anthropic provider.
+  A `converse` model is at `/v1/chat/completions` (see [Converse](#converse)). `/v1/messages/count_tokens` is not offered: it
   would send the prompt to a second operation the gateway does not meter.
 
 ## The guarantee {#guarantee}
@@ -88,6 +93,11 @@ increased cache writes".
 - **Usage and settlement.** `input_tokens`, `output_tokens`, `cache_read_input_tokens` and
   `cache_creation_input_tokens` are read from the answer (non-stream) or from `message_start` and
   `message_delta` inside the decoded chunk events (stream), and priced as for Anthropic.
+- **Billing note: cache writes of unknown lifetime (since v0.25.0).** When Bedrock reports
+  prompt-cache writes without saying how many are 5-minute and how many are 1-hour, or the split does
+  not add up, the writes are charged at the **higher** of the two write prices. Before v0.25.0 they
+  were counted as 5-minute, which under-billed 1-hour writes. **Settled costs can rise in that
+  case.** The same rule applies to Converse and to the Anthropic provider.
 - **An incomplete stream is billed at W**: a cut at any byte, an exception event
   (`throttlingException`, `modelStreamErrorException`, ...), a CRC failure, a missing
   `message_stop`, a `message_delta` without usage. So is a 200 answer without usage or with a body
@@ -118,6 +128,63 @@ too: headers are built from scratch and nothing the client sent is forwarded. `c
 v0.23.0 was run on three of these: it refused a non-Claude `model_id` ("only Anthropic Claude
 models are served through InvokeModel here"), a Provisioned Throughput ARN ("billed per hour, not
 per token") and two organisations sharing one credential.
+
+## Converse: Mistral, Llama, Nova and the other vendors {#converse}
+
+Since **v0.25.0** (#128) a model that is not Claude is sent to Bedrock's **Converse** and
+**ConverseStream** APIs. Clients use **`/v1/chat/completions`** in OpenAI format. The model carries
+the same guarantee as the Claude path: what a budget admits never exceeds it. Organisation
+isolation (one AWS account per organisation), SigV4 by go-llmflow/aws and the redaction of secrets
+are as above.
+
+```hcl
+model "mistral-large" {
+  provider          = "bedrock"
+  region            = "eu-west-3"
+  model_id          = "eu.mistral.mistral-large-2407-v1:0"   # api = "converse" is inferred
+  pool              = "bedrock"
+  allow_external    = true
+  orgs              = ["etabA", "etabB"]
+  context_window    = 128000       # required under a budget
+  max_output_tokens = 8192
+  cost {
+    unit            = "USD"
+    price_date      = "2026-11-01"
+    input_per_mtok  = 2
+    output_per_mtok = 6
+  }
+  org_credentials "etabA" {
+    access_key_id_file     = "/etc/llmflow/bedrock-etabA.id"
+    secret_access_key_file = "/etc/llmflow/bedrock-etabA.secret"
+  }
+  org_credentials "etabB" { bearer_token_file = "/etc/llmflow/bedrock-etabB.apikey" }
+}
+```
+
+The gateway's `examples/bedrock-converse.hcl` has this model, a second one (`eu.amazon.nova-pro-v1:0`
+with a 300000-token window and cache prices), `vault:` references for etabA and the guardrails.
+Run with the credential files present (file references in place of `vault:`, and the `pii` and
+`hide_secrets` guardrails), it passes `llmflow-gateway check-config` v0.25.0.
+
+- **What is mapped** (OpenAI chat to Converse): system messages go to `system`; consecutive messages
+  of one role are merged; text and `data:` URL images (png, jpeg, gif, webp) are mapped;
+  `max_tokens`, `temperature`, `top_p` and `stop` are mapped. The answer and the stream map back to
+  OpenAI. **The final usage chunk is sent only when the client asks with
+  `stream_options.include_usage`.**
+- **W.** It comes from the model's **`context_window`, which is required under a budget**: a
+  request under a budget to a model without it is refused with 503. `maxTokens` is always set.
+- **Refused before anything is held**, with 400: `guardrailConfig`, `serviceTier`,
+  `performanceConfig`, `promptVariables`, `requestMetadata`, `outputConfig`,
+  `additionalModelRequestFields`, `X-Amzn-Bedrock-*` headers, **remote image URLs** (the gateway
+  fetches nothing for a client) and **tools**. **Tools are not mapped yet**: that is a limit of this
+  release, not of the bound. OpenAI fields with no Converse equivalent (`n` above 1, `seed`,
+  `response_format`, `logprobs`, the penalties) are refused too.
+- **`check-config` refuses** a prompt-router, provisioned-model, custom-deployment,
+  imported-model, SageMaker or Prompt-management ARN as `model_id`.
+- **An incomplete stream is billed at W**: a cut stream, an exception event, a CRC failure or
+  missing usage. The client sees such a stream end without `[DONE]`.
+- **Cache writes** whose 5-minute/1-hour split is absent or does not add up are charged at the
+  higher write price (see the billing note above).
 
 ## Data retention {#retention}
 
