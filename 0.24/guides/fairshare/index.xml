@@ -1,0 +1,1527 @@
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>go-llmflow docs – Fair-share on a co-owned GPU cluster</title><link>https://go-llmflow.github.io/docs/0.24/guides/fairshare/</link><description>Recent content in Fair-share on a co-owned GPU cluster on go-llmflow docs</description><generator>Hugo -- gohugo.io</generator><language>en</language><atom:link href="https://go-llmflow.github.io/docs/0.24/guides/fairshare/index.xml" rel="self" type="application/rss+xml"/><item><title>Slurm: fair-share, QOS and preemption</title><link>https://go-llmflow.github.io/docs/0.24/guides/fairshare/slurm/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://go-llmflow.github.io/docs/0.24/guides/fairshare/slurm/</guid><description>
+&lt;h1 data-hextra-search-id="slurm"&gt;Slurm&lt;/h1&gt;&lt;p&gt;Slurm carries the batch workload and the guarantee. Reference numbers are
+&lt;code&gt;[n]&lt;/code&gt; entries of the &lt;a href="https://go-llmflow.github.io/docs/0.24/guides/fairshare/bibliography/"&gt;bibliography&lt;/a&gt;.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="principles"&gt;Fair-share principles&lt;span class="hx:absolute hx:-mt-20" id="principles"&gt;&lt;/span&gt;
+&lt;a href="#principles" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3 data-hextra-search-id="multifactor"&gt;Multifactor priority&lt;span class="hx:absolute hx:-mt-20" id="multifactor"&gt;&lt;/span&gt;
+&lt;a href="#multifactor" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;With &lt;code&gt;PriorityType=priority/multifactor&lt;/code&gt;, a job&amp;rsquo;s priority is an integer: a site
+factor, plus the sum of each factor (age, association, fair-share, size,
+partition, QOS, TRES) times its weight, minus the &lt;em&gt;nice&lt;/em&gt; value. Each factor is
+between 0 and 1 and weights default to 0, so only the configured factors count
+[2].&lt;/p&gt;
+&lt;h3 data-hextra-search-id="fair-tree"&gt;The Fair Tree algorithm&lt;span class="hx:absolute hx:-mt-20" id="fair-tree"&gt;&lt;/span&gt;
+&lt;a href="#fair-tree" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Fair Tree has been Slurm&amp;rsquo;s default since 19.05 [2]. At each level of the
+association tree it computes the &lt;em&gt;Level Fairshare&lt;/em&gt; [1]:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;LF = S / U S = S_self / S_(self+siblings) U = U_self / U_(self+siblings)&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;&lt;code&gt;LF &amp;gt; 1&lt;/code&gt; means under-served; &lt;code&gt;LF &amp;lt; 1&lt;/code&gt;, over-served; &lt;code&gt;LF = infinity&lt;/code&gt; with no
+consumption. Siblings are sorted by decreasing &lt;code&gt;LF&lt;/code&gt;, the tree is walked depth
+first, and each user receives a rank. The user&amp;rsquo;s fair-share factor is
+&lt;em&gt;rank / number of users&lt;/em&gt;: 1.0 for the first [1].&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;The decisive property for us&lt;/strong&gt;: the first level compares &lt;strong&gt;A against B&lt;/strong&gt; before
+looking at users. If A is over-served, &lt;em&gt;all&lt;/em&gt; of B&amp;rsquo;s users come before &lt;em&gt;all&lt;/em&gt; of
+A&amp;rsquo;s, whatever individual consumption is. This is exactly the wanted behaviour
+between two institutions.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;A worked example.&lt;/strong&gt; Over the last 14 days (with decay), A consumed 70 % of the
+billed GPU-hours and B 30 %:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;LF_A = 0.8125 / 0.70 = 1.16 LF_B = 0.1875 / 0.30 = 0.625&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;A is under-served relative to its share, so it goes first: its users get the
+highest ranks. B&amp;rsquo;s borrowing jobs will wait until A&amp;rsquo;s usage is back to normal.
+B&amp;rsquo;s jobs in its owner QOS remain guaranteed (see &lt;a href="#qos"&gt;QOS&lt;/a&gt;).&lt;/p&gt;
+&lt;h3 data-hextra-search-id="billing"&gt;Measuring consumption: GPU billing&lt;span class="hx:absolute hx:-mt-20" id="billing"&gt;&lt;/span&gt;
+&lt;a href="#billing" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;By default consumption is measured in CPU x seconds [2]. On a GPU cluster that
+is wrong: a job taking 1 core and 8 GPUs would cost almost nothing. So
+&lt;code&gt;TRESBillingWeights&lt;/code&gt; is set on the partition [2], with
+&lt;code&gt;PriorityFlags=MAX_TRES&lt;/code&gt;. A job&amp;rsquo;s billing then becomes &lt;em&gt;the per-node maximum&lt;/em&gt; of
+the weighted TRES (CPU, memory, GRES) [2], not their sum.&lt;/p&gt;
+&lt;p&gt;The weights are calibrated so that &lt;strong&gt;a whole server is worth 8 units&lt;/strong&gt;, whichever
+resource saturates it. For a server of &lt;code&gt;C&lt;/code&gt; cores and &lt;code&gt;M&lt;/code&gt; GiB of allocatable
+memory:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;w_GPU = 1 w_CPU = 8 / C w_Mem = 8 / M&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;With C = 128 and M = 3072 GiB: &lt;code&gt;CPU=0.0625,Mem=0.0026G,GRES/gpu=1.0&lt;/code&gt;. A job
+taking 1 GPU but 64 cores is billed 4 units, because it makes 4 GPUs unusable
+for others. The unit of account becomes the &lt;strong&gt;GPU-equivalent second&lt;/strong&gt;.&lt;/p&gt;
+&lt;div class="hx:overflow-x-auto hx:mt-6 hx:flex hx:rounded-lg hx:border hx:py-2 hx:ltr:pr-4 hx:rtl:pl-4 hx:contrast-more:border-current hx:contrast-more:dark:border-current hx:border-blue-200 hx:bg-blue-100 hx:text-blue-900 hx:dark:border-blue-200/30 hx:dark:bg-blue-900/30 hx:dark:text-blue-200"&gt;
+&lt;div class="hx:ltr:pl-3 hx:ltr:pr-2 hx:rtl:pr-3 hx:rtl:pl-2"&gt;&lt;svg height=1.2em class="hx:inline-block hx:align-middle" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"&gt;&lt;path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/&gt;&lt;/svg&gt;&lt;/div&gt;
+&lt;div class="hx:w-full hx:min-w-0 hx:leading-7"&gt;
+&lt;div class="hx:mt-6 hx:leading-7 hx:first:mt-0"&gt;&lt;strong&gt;To validate&lt;/strong&gt;: replace &lt;code&gt;C&lt;/code&gt; and &lt;code&gt;M&lt;/code&gt; by the values of &lt;code&gt;slurmd -C&lt;/code&gt; [5] on your
+servers (&lt;code&gt;CPUs&lt;/code&gt; and &lt;code&gt;RealMemory&lt;/code&gt; minus the memory reserved for the system).&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;h3 data-hextra-search-id="decay"&gt;Decay of consumption&lt;span class="hx:absolute hx:-mt-20" id="decay"&gt;&lt;/span&gt;
+&lt;a href="#decay" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;code&gt;PriorityDecayHalfLife&lt;/code&gt; is 7 days by default and applies every
+&lt;code&gt;PriorityCalcPeriod&lt;/code&gt; (5 minutes by default) [2]. We recommend &lt;strong&gt;14 days&lt;/strong&gt;:
+training jobs on B300 often last several days, and a too-short half-life would
+erase a consumption debt before the other institution could catch up.
+&lt;code&gt;PriorityUsageResetPeriod&lt;/code&gt; stays &lt;code&gt;NONE&lt;/code&gt;: an abrupt reset creates edge effects at
+the start of a period.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="qos"&gt;Guarantee by QOS and preemption&lt;span class="hx:absolute hx:-mt-20" id="qos"&gt;&lt;/span&gt;
+&lt;a href="#qos" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3 data-hextra-search-id="the-qos"&gt;The QOS&lt;span class="hx:absolute hx:-mt-20" id="the-qos"&gt;&lt;/span&gt;
+&lt;a href="#the-qos" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;QOS&lt;/th&gt;
+&lt;th&gt;Cap&lt;/th&gt;
+&lt;th&gt;Role&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;instA&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;GrpTRES=gres/gpu=G_A&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;A&amp;rsquo;s share, never preempted&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;instB&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;GrpTRES=gres/gpu=G_B&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;B&amp;rsquo;s share, never preempted&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;service&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;GrpTRES=gres/gpu=G_S&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;shared vLLM instances, never preempted&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;borrow&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;none&lt;/td&gt;
+&lt;td&gt;surplus; preemptible by the three QOS above; ordered by fair-share&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;&lt;code&gt;GrpTRES&lt;/code&gt; limits the total TRES allocated to all running jobs of the QOS [4].
+Since &lt;code&gt;G_A + G_B + G_S = 32&lt;/code&gt;, the sum of the guaranteed shares never exceeds the
+cluster. The GPUs an owner does not occupy are either free or held by &lt;code&gt;borrow&lt;/code&gt;
+jobs, therefore recoverable by preemption.&lt;/p&gt;
+&lt;h3 data-hextra-search-id="split"&gt;Splitting between batch and inference&lt;span class="hx:absolute hx:-mt-20" id="split"&gt;&lt;/span&gt;
+&lt;a href="#split" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;The inference service is a common good: its GPUs are taken from each share in
+proportion to ownership. With an inference pool of &lt;strong&gt;16 GPUs (2 servers, 2 TP=8
+instances)&lt;/strong&gt;:&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;/th&gt;
+&lt;th&gt;Total share&lt;/th&gt;
+&lt;th&gt;of which inference (pro rata)&lt;/th&gt;
+&lt;th&gt;Guaranteed batch&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;A&lt;/td&gt;
+&lt;td&gt;26&lt;/td&gt;
+&lt;td&gt;13&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;G_A = 13&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;B&lt;/td&gt;
+&lt;td&gt;6&lt;/td&gt;
+&lt;td&gt;3&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;G_B = 3&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Service&lt;/td&gt;
+&lt;td&gt;&amp;ndash;&lt;/td&gt;
+&lt;td&gt;&amp;ndash;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;G_S = 16&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;With a pool of 8 GPUs the pro rata gives 6.5 and 1.5, so it is rounded to
+&lt;code&gt;G_A = 19&lt;/code&gt; and &lt;code&gt;G_B = 5&lt;/code&gt;: fair-share, which counts continuously, rebalances the
+half GPU over time. The inference pool can change size with the time of day
+(&lt;a href="https://go-llmflow.github.io/docs/0.24/guides/fairshare/inference/#elastic-pool"&gt;elastic pool&lt;/a&gt;); the GPUs released
+go to &lt;code&gt;borrow&lt;/code&gt; jobs.&lt;/p&gt;
+&lt;h3 data-hextra-search-id="weekly-reservation"&gt;B&amp;rsquo;s big jobs: a weekly reservation&lt;span class="hx:absolute hx:-mt-20" id="weekly-reservation"&gt;&lt;/span&gt;
+&lt;a href="#weekly-reservation" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;B&amp;rsquo;s guaranteed share (&lt;code&gt;G_B&lt;/code&gt; = 3 or 5) is below 8. Without a special measure, B
+can run a job on a whole server (TP=8, multi-GPU training) only in the &lt;code&gt;borrow&lt;/code&gt;
+QOS, hence with no guaranteed delay. B is given a &lt;strong&gt;recurring reservation&lt;/strong&gt; of
+one whole server.&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-bash" data-lang="bash"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# A 48 h window every week, starting Monday 8:00, for institution B&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;scontrol create reservation &lt;span class="nv"&gt;ReservationName&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;instB_weekly &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nv"&gt;StartTime&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;2026-11-02T08:00:00 &lt;span class="nv"&gt;Duration&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;2-00:00:00 &lt;span class="nv"&gt;Flags&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;WEEKLY &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nv"&gt;Accounts&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;instB &lt;span class="nv"&gt;PartitionName&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;gpu &lt;span class="nv"&gt;NodeCnt&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;1&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# On B&amp;#39;s side, during the window&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sbatch -A b_lab --reservation&lt;span class="o"&gt;=&lt;/span&gt;instB_weekly --qos&lt;span class="o"&gt;=&lt;/span&gt;borrow &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --gres&lt;span class="o"&gt;=&lt;/span&gt;gpu:b300:8 --time&lt;span class="o"&gt;=&lt;/span&gt;2-00:00:00 training.sh&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;Slurm&amp;rsquo;s behaviour, from the reservation documentation [21]:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;WEEKLY&lt;/code&gt; makes the reservation recurring: it activates and deactivates itself
+every week.&lt;/li&gt;
+&lt;li&gt;During the window, the reserved resources serve &lt;em&gt;only&lt;/em&gt; the reservation&amp;rsquo;s jobs:
+&amp;ldquo;no other jobs can use those resources&amp;rdquo;.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Unused reserved time is charged&lt;/strong&gt; to the reservation&amp;rsquo;s users or accounts, in
+equal parts. Here all of it goes to &lt;code&gt;instB&lt;/code&gt;. B therefore pays for its window in
+fair-share whether it uses it or not. That is fair (the server was taken from
+the others) and it encourages reserving only what will be used.&lt;/li&gt;
+&lt;li&gt;B submits in the &lt;code&gt;borrow&lt;/code&gt; QOS, not in &lt;code&gt;instB&lt;/code&gt; whose 3-GPU cap would block an
+8-GPU job. The preemption risk is nil: no owner job of A can enter the
+reserved server.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Sizing.&lt;/strong&gt; B&amp;rsquo;s weekly share is &lt;code&gt;6 x 168 = 1,008&lt;/code&gt; GPU-hours. A 48 h window costs
+&lt;code&gt;8 x 48 = 384&lt;/code&gt; GPU-hours, 38 % of its share. The rest is consumed in &lt;code&gt;instB&lt;/code&gt; and
+&lt;code&gt;borrow&lt;/code&gt;. The agreement fixes the duration; a 126 h window would exhaust all of
+B&amp;rsquo;s share in a whole server.&lt;/p&gt;
+&lt;div class="hx:overflow-x-auto hx:mt-6 hx:flex hx:rounded-lg hx:border hx:py-2 hx:ltr:pr-4 hx:rtl:pl-4 hx:contrast-more:border-current hx:contrast-more:dark:border-current hx:border-amber-200 hx:bg-amber-100 hx:text-amber-900 hx:dark:border-amber-200/30 hx:dark:bg-amber-900/30 hx:dark:text-amber-200"&gt;
+&lt;div class="hx:ltr:pl-3 hx:ltr:pr-2 hx:rtl:pr-3 hx:rtl:pl-2"&gt;&lt;svg height=1.2em class="hx:inline-block hx:align-middle" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"&gt;&lt;path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/&gt;&lt;/svg&gt;&lt;/div&gt;
+&lt;div class="hx:w-full hx:min-w-0 hx:leading-7"&gt;
+&lt;div class="hx:mt-6 hx:leading-7 hx:first:mt-0"&gt;Before each window, Slurm must start on the chosen server only jobs that finish
+before it opens. &lt;code&gt;borrow&lt;/code&gt; jobs that declare a short &lt;code&gt;--time&lt;/code&gt; then keep filling
+that server until the last minute. This behaviour is verified in the
+&lt;a href="https://go-llmflow.github.io/docs/0.24/guides/fairshare/audit-and-acceptance/#acceptance"&gt;acceptance tests&lt;/a&gt; (test
+9). For B, the job must also fit the window: &lt;code&gt;--time&lt;/code&gt; less than or equal to the
+remaining duration.&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;h3 data-hextra-search-id="preemption"&gt;Preemption&lt;span class="hx:absolute hx:-mt-20" id="preemption"&gt;&lt;/span&gt;
+&lt;a href="#preemption" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;PreemptType=preempt/qos&lt;/code&gt;: the rules come from the QOS in the database [3].&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;PreemptMode=REQUEUE&lt;/code&gt;: the preempted job is put back in the queue. This
+requires &lt;code&gt;JobRequeue=1&lt;/code&gt; or &lt;code&gt;sbatch --requeue&lt;/code&gt; [3]. &lt;code&gt;SUSPEND&lt;/code&gt; is rejected: a
+suspended job keeps its memory, hence its 288 GB of HBM per GPU, and the owner
+QOS would recover nothing [3].&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;PreemptExemptTime&lt;/code&gt;: minimum run time before being preemptible [3]. We choose
+&lt;strong&gt;30 min&lt;/strong&gt;, so that a borrowed job makes at least some progress.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;GraceTime&lt;/code&gt; on the &lt;code&gt;borrow&lt;/code&gt; QOS: the delay between SIGTERM and SIGKILL [3],
+used to write a &lt;em&gt;checkpoint&lt;/em&gt;. We choose &lt;strong&gt;300 s&lt;/strong&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Guaranteed delay.&lt;/strong&gt; An owner job that fits in its QOS starts after at most&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;PreemptExemptTime + GraceTime + one scheduling cycle = 30 + 5 + 1 = 36 minutes&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;and in practice much sooner, since most borrowed jobs have already passed their
+first 30 minutes. This figure goes into the agreement between institutions and
+is measured in the acceptance tests.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="configuration"&gt;Reference configuration&lt;span class="hx:absolute hx:-mt-20" id="configuration"&gt;&lt;/span&gt;
+&lt;a href="#configuration" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3 data-hextra-search-id="slurm-conf"&gt;&lt;code&gt;slurm.conf&lt;/code&gt; (excerpts)&lt;span class="hx:absolute hx:-mt-20" id="slurm-conf"&gt;&lt;/span&gt;
+&lt;a href="#slurm-conf" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-ini" data-lang="ini"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;ClusterName&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;b300&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;SelectType&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;select/cons_tres&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;SelectTypeParameters&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;CR_Core_Memory&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;GresTypes&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;gpu&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;NodeName&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;gpu[01-04] Gres=gpu:b300:8 CPUs=&amp;lt;C&amp;gt; RealMemory=&amp;lt;M_MiB&amp;gt; State=UNKNOWN&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;PartitionName&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;gpu Nodes=gpu[01-04] Default=YES MaxTime=3-00:00:00 State=UP \
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="s"&gt; TRESBillingWeights=&amp;#34;CPU=0.0625,Mem=0.0026G,GRES/gpu=1.0&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# Accounting and enforcement of limits&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;AccountingStorageType&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;accounting_storage/slurmdbd&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;AccountingStorageTRES&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;gres/gpu,gres/gpu:b300&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;AccountingStorageEnforce&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;associations,limits,qos,safe&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# Priority&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;PriorityType&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;priority/multifactor&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;PriorityFlags&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;MAX_TRES&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;PriorityDecayHalfLife&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;14-0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;PriorityCalcPeriod&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;5&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;PriorityMaxAge&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;7-0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;PriorityWeightFairshare&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;100000&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;PriorityWeightQOS&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;20000&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;PriorityWeightAge&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;5000&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;PriorityWeightJobSize&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;PriorityWeightPartition&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;0&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# Preemption&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;PreemptType&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;preempt/qos&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;PreemptMode&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;REQUEUE&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;PreemptExemptTime&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;00:30:00&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;JobRequeue&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;1&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# Isolation&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;ProctrackType&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;proctrack/cgroup&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;TaskPlugin&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;task/cgroup,task/affinity&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;Reading notes:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;select/cons_tres&lt;/code&gt; is required for sharing GRES (MPS, &lt;em&gt;shard&lt;/em&gt;) [5] and for the
+preemption of heterogeneous jobs [3].&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;AccountingStorageTRES&lt;/code&gt;: declare &lt;code&gt;gres/gpu&lt;/code&gt; &lt;em&gt;and&lt;/em&gt; its typed variant, as the
+documentation recommends [6]. Declaring &lt;code&gt;gres/gpu&lt;/code&gt; also enables &lt;code&gt;gres/gpumem&lt;/code&gt;
+and &lt;code&gt;gres/gpuutil&lt;/code&gt; [6].&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;AccountingStorageEnforce=...,safe&lt;/code&gt;: a job starts only if it can finish within
+its limits in TRES-minutes [4].&lt;/li&gt;
+&lt;li&gt;The fair-share weight dominates (100,000); the QOS weight (20,000) breaks ties;
+age (5,000) prevents starvation of an old job.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 data-hextra-search-id="gres-cgroup"&gt;&lt;code&gt;gres.conf&lt;/code&gt; and &lt;code&gt;cgroup.conf&lt;/code&gt;&lt;span class="hx:absolute hx:-mt-20" id="gres-cgroup"&gt;&lt;/span&gt;
+&lt;a href="#gres-cgroup" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-ini" data-lang="ini"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# gres.conf -- automatic detection through NVML&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;AutoDetect&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;nvml&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# cgroup.conf&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;ConstrainCores&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;yes&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;ConstrainDevices&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;yes&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="na"&gt;ConstrainRAMSpace&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s"&gt;yes&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;With &lt;code&gt;AutoDetect=nvml&lt;/code&gt;, Slurm fills in the details of detected GPUs. The &lt;code&gt;Gres=&lt;/code&gt;
+line of &lt;code&gt;slurm.conf&lt;/code&gt; stays mandatory, and a node exposing fewer GPUs than
+announced goes to DRAIN [5].&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;ConstrainDevices=yes&lt;/code&gt; limits a job to the devices of its GRES allocation [7].
+Without it a job could open another institution&amp;rsquo;s GPUs.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;MIG (optional).&lt;/strong&gt; For small inference or TP jobs, the B300s can be cut into
+MIG instances. Slurm manages them with &lt;code&gt;AutoDetect=nvml&lt;/code&gt; on the nodes
+concerned, each instance typed by its profile [5]. &lt;em&gt;Shards&lt;/em&gt;, on the other hand,
+do not partition processes on the GPU [5]: reserve them for uses inside one
+institution.&lt;/p&gt;
+&lt;h3 data-hextra-search-id="sacctmgr"&gt;Accounts and QOS (&lt;code&gt;sacctmgr&lt;/code&gt;)&lt;span class="hx:absolute hx:-mt-20" id="sacctmgr"&gt;&lt;/span&gt;
+&lt;a href="#sacctmgr" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-bash" data-lang="bash"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# Institutions: shares expressed in owned GPUs&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr add account instA &lt;span class="nv"&gt;Description&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;Institution A&amp;#34;&lt;/span&gt; &lt;span class="nv"&gt;Fairshare&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;26&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr add account instB &lt;span class="nv"&gt;Description&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;Institution B&amp;#34;&lt;/span&gt; &lt;span class="nv"&gt;Fairshare&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;6&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr add account svc_llm &lt;span class="nv"&gt;Description&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;Inference service&amp;#34;&lt;/span&gt; &lt;span class="nv"&gt;Fairshare&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;1&lt;/span&gt; &lt;span class="nv"&gt;Parent&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;root
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# Teams (example) under each institution&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr add account a_physics &lt;span class="nv"&gt;Parent&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;instA &lt;span class="nv"&gt;Fairshare&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;60&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr add account a_biology &lt;span class="nv"&gt;Parent&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;instA &lt;span class="nv"&gt;Fairshare&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;40&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr add account b_lab &lt;span class="nv"&gt;Parent&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;instB &lt;span class="nv"&gt;Fairshare&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;parent
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# QOS&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr add qos borrow
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr modify qos borrow &lt;span class="nb"&gt;set&lt;/span&gt; &lt;span class="nv"&gt;Priority&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;0&lt;/span&gt; &lt;span class="nv"&gt;PreemptMode&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;REQUEUE &lt;span class="nv"&gt;GraceTime&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;300&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr add qos instA
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr modify qos instA &lt;span class="nb"&gt;set&lt;/span&gt; &lt;span class="nv"&gt;Priority&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;100&lt;/span&gt; &lt;span class="nv"&gt;GrpTRES&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;gres/gpu&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;13&lt;/span&gt; &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nv"&gt;Preempt&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;borrow &lt;span class="nv"&gt;Flags&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;DenyOnLimit
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr add qos instB
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr modify qos instB &lt;span class="nb"&gt;set&lt;/span&gt; &lt;span class="nv"&gt;Priority&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;100&lt;/span&gt; &lt;span class="nv"&gt;GrpTRES&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;gres/gpu&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;3&lt;/span&gt; &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nv"&gt;Preempt&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;borrow &lt;span class="nv"&gt;Flags&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;DenyOnLimit
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr add qos service
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr modify qos service &lt;span class="nb"&gt;set&lt;/span&gt; &lt;span class="nv"&gt;Priority&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;1000&lt;/span&gt; &lt;span class="nv"&gt;GrpTRES&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;gres/gpu&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;16&lt;/span&gt; &lt;span class="nv"&gt;Preempt&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;borrow
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# Attachment: owner QOS by default + the right to borrow&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr modify account instA &lt;span class="nb"&gt;set&lt;/span&gt; &lt;span class="nv"&gt;QOS&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;instA,borrow &lt;span class="nv"&gt;DefaultQOS&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;instA
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr modify account instB &lt;span class="nb"&gt;set&lt;/span&gt; &lt;span class="nv"&gt;QOS&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;instB,borrow &lt;span class="nv"&gt;DefaultQOS&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;instB
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr modify account svc_llm &lt;span class="nb"&gt;set&lt;/span&gt; &lt;span class="nv"&gt;QOS&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;service &lt;span class="nv"&gt;DefaultQOS&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;service
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# Users&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr add user alice &lt;span class="nv"&gt;Account&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;a_physics
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sacctmgr add user bob &lt;span class="nv"&gt;Account&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;b_lab&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;Fairshare=parent&lt;/code&gt; on an account attaches its children to the parent for the
+computation [8]: B, which has a single laboratory, adds no useless level.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;DenyOnLimit&lt;/code&gt; rejects at submission a job that alone would exceed the QOS
+limits [8]. An 8-GPU job submitted in &lt;code&gt;instB&lt;/code&gt; is refused immediately instead of
+waiting forever; the user is invited to use &lt;code&gt;borrow&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;svc_llm&lt;/code&gt; receives a symbolic share: its guarantee comes from the &lt;code&gt;service&lt;/code&gt;
+QOS, not from fair-share. Its consumption is re-charged to the institutions
+(see &lt;a href="https://go-llmflow.github.io/docs/0.24/guides/fairshare/accounting/"&gt;accounting&lt;/a&gt;).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 data-hextra-search-id="user-side"&gt;User side&lt;span class="hx:absolute hx:-mt-20" id="user-side"&gt;&lt;/span&gt;
+&lt;a href="#user-side" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-bash" data-lang="bash"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# Within one&amp;#39;s guaranteed share (default QOS)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sbatch -A a_physics --gres&lt;span class="o"&gt;=&lt;/span&gt;gpu:b300:4 train.sh
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# Beyond one&amp;#39;s share: borrowing, preemptible, must be able to resume&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sbatch -A a_physics --qos&lt;span class="o"&gt;=&lt;/span&gt;borrow --requeue --gres&lt;span class="o"&gt;=&lt;/span&gt;gpu:b300:8 &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --signal&lt;span class="o"&gt;=&lt;/span&gt;B:TERM@300 train_checkpoint.sh&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;The script of a &lt;code&gt;borrow&lt;/code&gt; job traps SIGTERM, writes a checkpoint within the 300 s
+of &lt;code&gt;GraceTime&lt;/code&gt;, and restarts from the last checkpoint when requeued.&lt;/p&gt;
+&lt;h3 data-hextra-search-id="monitoring"&gt;Monitoring&lt;span class="hx:absolute hx:-mt-20" id="monitoring"&gt;&lt;/span&gt;
+&lt;a href="#monitoring" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Command&lt;/th&gt;
+&lt;th&gt;What it shows&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;sshare -l&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;each association&amp;rsquo;s Level FS [1]: are A and B over- or under-served?&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;sprio -l&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;decomposition of the priority of waiting jobs by factor&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;sreport cluster AccountUtilizationByUser -T gres/gpu&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;GPU-hours per account over a period&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;scontrol show job &amp;lt;id&amp;gt;&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;the &lt;code&gt;PreemptEligibleTime&lt;/code&gt; [3] of a borrowed job&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;</description></item><item><title>Inference: vLLM and the gateway</title><link>https://go-llmflow.github.io/docs/0.24/guides/fairshare/inference/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://go-llmflow.github.io/docs/0.24/guides/fairshare/inference/</guid><description>
+&lt;h1 data-hextra-search-id="inference"&gt;Inference&lt;/h1&gt;&lt;p&gt;Shared inference is vLLM running inside Slurm, behind a gateway that is the
+&lt;strong&gt;only HTTPS entry point&lt;/strong&gt;. In the original design the gateway is LiteLLM; the
+measurements below are of LiteLLM 1.106.2. The Go
+&lt;a href="https://go-llmflow.github.io/docs/0.24/gateway/"&gt;gateway&lt;/a&gt; of this organisation implements the
+fair-share policy that LiteLLM&amp;rsquo;s free edition lacks.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="vllm-in-slurm"&gt;vLLM in Slurm&lt;span class="hx:absolute hx:-mt-20" id="vllm-in-slurm"&gt;&lt;/span&gt;
+&lt;a href="#vllm-in-slurm" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Each vLLM instance is a long Slurm job in the &lt;code&gt;svc_llm&lt;/code&gt; account and the &lt;code&gt;service&lt;/code&gt;
+QOS. It is therefore accounted, cgroup-isolated, and never preempted. For a
+whole server:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-bash" data-lang="bash"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="cp"&gt;#!/bin/bash
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;#SBATCH -A svc_llm --qos=service&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;#SBATCH --nodes=1 --gres=gpu:b300:8 --exclusive&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;#SBATCH --time=7-00:00:00 --job-name=vllm-large-model&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;vllm serve &amp;lt;model&amp;gt; &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --host &amp;lt;node-internal-ip&amp;gt; --port &lt;span class="m"&gt;8000&lt;/span&gt; &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --tensor-parallel-size &lt;span class="m"&gt;8&lt;/span&gt; &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --scheduling-policy priority &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --gpu-memory-utilization 0.92 &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --enable-prefix-caching &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --max-num-seqs &lt;span class="m"&gt;256&lt;/span&gt; &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --api-key &lt;span class="s2"&gt;&amp;#34;&lt;/span&gt;&lt;span class="k"&gt;$(&lt;/span&gt;cat /etc/vllm/internal-key&lt;span class="k"&gt;)&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Option&lt;/th&gt;
+&lt;th&gt;Role (from the engine arguments documentation [9])&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--tensor-parallel-size&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;number of tensor-parallel groups; 8 = one NVLink server&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--data-parallel-size&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;replicas; for MoE models experts are spread over TP x DP&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--enable-expert-parallel&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;expert parallelism instead of tensor parallelism for MoE layers&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--scheduling-policy&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;fcfs&lt;/code&gt; (default) or &lt;code&gt;priority&lt;/code&gt;: order by priority, then arrival&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--max-num-seqs&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;maximum number of sequences per iteration&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--max-num-batched-tokens&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;maximum number of tokens per iteration&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--gpu-memory-utilization&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;share of GPU memory given to vLLM (default 0.92)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--enable-prefix-caching&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;reuses the KV cache of common prefixes (shared system prompts)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--kv-cache-dtype&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;KV cache type (&lt;code&gt;fp8&lt;/code&gt;, &lt;code&gt;nvfp4&lt;/code&gt;&amp;hellip;): more context in memory&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--enable-lora&lt;/code&gt;, &lt;code&gt;--max-loras&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;per-team LoRA adapters on one base model&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 data-hextra-search-id="priority"&gt;Per-request priority&lt;span class="hx:absolute hx:-mt-20" id="priority"&gt;&lt;/span&gt;
+&lt;a href="#priority" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;A request may carry an integer &lt;code&gt;priority&lt;/code&gt;: the &lt;strong&gt;lower&lt;/strong&gt; it is, the sooner the
+request runs (default 0). The &lt;code&gt;X-Vllm-Priority&lt;/code&gt; header takes precedence over the
+JSON body. Any non-zero value is an error if the server was not started with
+&lt;code&gt;--scheduling-policy priority&lt;/code&gt; [10].&lt;/p&gt;
+&lt;p&gt;What the scheduler does, from its source code [25]:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;the waiting queue is a heap sorted by &lt;code&gt;(priority, arrival_time)&lt;/code&gt;: the smallest
+priority comes out first, arrival breaks ties;&lt;/li&gt;
+&lt;li&gt;when a &lt;em&gt;running&lt;/em&gt; request cannot find KV-cache blocks any more, vLLM preempts
+the running request with the &lt;strong&gt;largest&lt;/strong&gt; &lt;code&gt;(priority, arrival_time)&lt;/code&gt; and puts
+it back at the head of the queue;&lt;/li&gt;
+&lt;li&gt;a high-priority &lt;em&gt;waiting&lt;/em&gt; request does not preempt a running request: it takes
+the first slot that frees up.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Priority therefore orders admission and designates the victims when memory runs
+short. It does not interrupt generations in progress. Since a generation lasts a
+few seconds, the effect on latency is quick. We use it to put interactive use
+(VS Code, chat) ahead of API batch processing, and for the split between
+institutions (&lt;a href="#fair-share-inference"&gt;below&lt;/a&gt;).&lt;/p&gt;
+&lt;h2 data-hextra-search-id="securing-vllm"&gt;Securing vLLM&lt;span class="hx:absolute hx:-mt-20" id="securing-vllm"&gt;&lt;/span&gt;
+&lt;a href="#securing-vllm" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;div class="hx:overflow-x-auto hx:mt-6 hx:flex hx:rounded-lg hx:border hx:py-2 hx:ltr:pr-4 hx:rtl:pl-4 hx:contrast-more:border-current hx:contrast-more:dark:border-current hx:border-amber-200 hx:bg-amber-100 hx:text-amber-900 hx:dark:border-amber-200/30 hx:dark:bg-amber-900/30 hx:dark:text-amber-200"&gt;
+&lt;div class="hx:ltr:pl-3 hx:ltr:pr-2 hx:rtl:pr-3 hx:rtl:pl-2"&gt;&lt;svg height=1.2em class="hx:inline-block hx:align-middle" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"&gt;&lt;path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/&gt;&lt;/svg&gt;&lt;/div&gt;
+&lt;div class="hx:w-full hx:min-w-0 hx:leading-7"&gt;
+&lt;div class="hx:mt-6 hx:leading-7 hx:first:mt-0"&gt;&lt;code&gt;--api-key&lt;/code&gt; protects only the &lt;code&gt;/v1&lt;/code&gt;, &lt;code&gt;/v2&lt;/code&gt; and &lt;code&gt;/inference&lt;/code&gt; paths. Other
+endpoints of the same server, such as &lt;code&gt;/invocations&lt;/code&gt;, &lt;strong&gt;are not authenticated&lt;/strong&gt;.
+The documentation asks not to rely on &lt;code&gt;--api-key&lt;/code&gt; alone and to put vLLM behind a
+proxy [10].&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;Hence the rules: vLLM listens on the cluster&amp;rsquo;s internal interface only; a
+firewall lets only the gateway reach the vLLM ports; the internal key is read
+from a file, never passed in clear in the environment or in shell history.&lt;/p&gt;
+&lt;h3 data-hextra-search-id="prefix-cache-isolation"&gt;Prefix-cache isolation&lt;span class="hx:absolute hx:-mt-20" id="prefix-cache-isolation"&gt;&lt;/span&gt;
+&lt;a href="#prefix-cache-isolation" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;With &lt;code&gt;--enable-prefix-caching&lt;/code&gt;, vLLM reuses cached KV blocks across requests that
+share a prompt prefix. That reuse is a &lt;strong&gt;timing side channel between tenants&lt;/strong&gt;: a
+caller can tell from the time to first token whether a guessed prefix was cached,
+hence whether another institution sent it (vLLM&amp;rsquo;s
+&lt;a href="https://docs.vllm.ai/en/stable/usage/security/" target="_blank" rel="noopener"&gt;security guide&lt;/a&gt;; CVE-2025-46570).
+On a cluster shared by A and B this must be closed. The vLLM mechanism is the
+&lt;code&gt;cache_salt&lt;/code&gt; request field, mixed into the hash of the first KV block. The Go
+&lt;a href="https://go-llmflow.github.io/docs/0.24/gateway/#prefix-cache-isolation"&gt;gateway&lt;/a&gt; (v0.3.0) always sets
+a stable per-tenant salt (an HMAC of the tenant under a secret key file of at
+least 32 random bytes) and drops the client&amp;rsquo;s own; &lt;code&gt;cache_isolation&lt;/code&gt; chooses the
+tenant (&lt;code&gt;org&lt;/code&gt; by default, &lt;code&gt;team&lt;/code&gt;, &lt;code&gt;key&lt;/code&gt;, or &lt;code&gt;none&lt;/code&gt;). Two limits to keep in mind:
+users inside one scope can still probe each other (&lt;code&gt;team&lt;/code&gt; or &lt;code&gt;key&lt;/code&gt; narrow it, at
+the cost of cache reuse), and &lt;code&gt;cache_salt&lt;/code&gt; is not a hard isolation boundary, which
+only a vLLM instance per tenant is. Rotating the key empties everyone&amp;rsquo;s cache.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="elastic-pool"&gt;Elastic pool&lt;span class="hx:absolute hx:-mt-20" id="elastic-pool"&gt;&lt;/span&gt;
+&lt;a href="#elastic-pool" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;At night and at weekends interactive inference drops. An &lt;code&gt;scontrol update&lt;/code&gt; or a
+&lt;code&gt;scrontab&lt;/code&gt; can stop one instance in two: 8 GPUs go back to the &lt;code&gt;borrow&lt;/code&gt; QOS,
+without changing A&amp;rsquo;s and B&amp;rsquo;s guarantees. On the gateway side the second instance
+leaves the routing; its requests go to the first, which stays available.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="the-gateway"&gt;The gateway&lt;span class="hx:absolute hx:-mt-20" id="the-gateway"&gt;&lt;/span&gt;
+&lt;a href="#the-gateway" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The gateway is the only HTTPS entry point of inference. It carries:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;identity&lt;/strong&gt;: a virtual key per user, attached to a &lt;em&gt;team&lt;/em&gt; = an institution;&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;quotas&lt;/strong&gt;: rate (tokens/min, requests/min, concurrent requests) and a budget
+per team;&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;the 81.25 / 18.75 split&lt;/strong&gt; under saturation;&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;accounting&lt;/strong&gt;: spend in tokens per team, the basis of the
+&lt;a href="https://go-llmflow.github.io/docs/0.24/guides/fairshare/accounting/"&gt;re-charging&lt;/a&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="hx:overflow-x-auto hx:mt-6 hx:flex hx:rounded-lg hx:border hx:py-2 hx:ltr:pr-4 hx:rtl:pl-4 hx:contrast-more:border-current hx:contrast-more:dark:border-current hx:border-amber-200 hx:bg-amber-100 hx:text-amber-900 hx:dark:border-amber-200/30 hx:dark:bg-amber-900/30 hx:dark:text-amber-200"&gt;
+&lt;div class="hx:ltr:pl-3 hx:ltr:pr-2 hx:rtl:pr-3 hx:rtl:pl-2"&gt;&lt;svg height=1.2em class="hx:inline-block hx:align-middle" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"&gt;&lt;path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/&gt;&lt;/svg&gt;&lt;/div&gt;
+&lt;div class="hx:w-full hx:min-w-0 hx:leading-7"&gt;
+&lt;div class="hx:mt-6 hx:leading-7 hx:first:mt-0"&gt;With LiteLLM, budgets are enforced only with a &lt;strong&gt;Postgres&lt;/strong&gt; database. Without one
+they are not enforced at all [11]. With several LiteLLM instances &lt;strong&gt;Redis&lt;/strong&gt; is
+needed too, or each instance counts on its own and limits can be exceeded. Enable
+&lt;code&gt;fail_closed_budget_enforcement&lt;/code&gt; and &lt;code&gt;fail_closed_rate_limit_enforcement&lt;/code&gt;: if
+Redis or the database fails, the gateway answers 503 instead of letting requests
+through uncounted [11].&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;h3 data-hextra-search-id="routing"&gt;Models and routing&lt;span class="hx:absolute hx:-mt-20" id="routing"&gt;&lt;/span&gt;
+&lt;a href="#routing" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;This is LiteLLM&amp;rsquo;s configuration; the interactive group pins priority 0 and the
+batch group pins priority 10, on the same instances.&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-yaml" data-lang="yaml"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nt"&gt;model_list&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="c"&gt;# Interactive group (VS Code, chat): vLLM priority pinned to 0&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;- &lt;span class="nt"&gt;model_name&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;large-model&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;litellm_params&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;model&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;hosted_vllm/&amp;lt;model&amp;gt;&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;api_base&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;http://gpu01.internal:8000/v1&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;api_key&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;os.environ/VLLM_INTERNAL_KEY&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;extra_headers&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;{&lt;span class="nt"&gt;X-Vllm-Priority&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;0&amp;#34;&lt;/span&gt;}&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;model_info&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="cp"&gt;&amp;amp;cost&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="c"&gt;# internal cost, calibrated on the accounting page&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;input_cost_per_token&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;&amp;lt;c_in&amp;gt;&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;output_cost_per_token&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;&amp;lt;c_out&amp;gt;&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;cache_read_input_token_cost&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;&amp;lt;c_cache&amp;gt;&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;- &lt;span class="nt"&gt;model_name&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;large-model&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;litellm_params&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;model&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;hosted_vllm/&amp;lt;model&amp;gt;&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;api_base&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;http://gpu02.internal:8000/v1&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;api_key&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;os.environ/VLLM_INTERNAL_KEY&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;extra_headers&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;{&lt;span class="nt"&gt;X-Vllm-Priority&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;0&amp;#34;&lt;/span&gt;}&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;model_info&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="cp"&gt;*cost&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="c"&gt;# Batch group (API scripts): same instances, priority 10&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;- &lt;span class="nt"&gt;model_name&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;large-model-batch&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;litellm_params&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;model&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;hosted_vllm/&amp;lt;model&amp;gt;&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;api_base&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;http://gpu01.internal:8000/v1&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;api_key&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;os.environ/VLLM_INTERNAL_KEY&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;extra_headers&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;{&lt;span class="nt"&gt;X-Vllm-Priority&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;10&amp;#34;&lt;/span&gt;}&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;model_info&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="cp"&gt;*cost&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="c"&gt;# (... same for gpu02 ...)&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nt"&gt;router_settings&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;routing_strategy&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;least-busy&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;allowed_fails&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;3&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;cooldown_time&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;30&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;redis_host&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;os.environ/REDIS_HOST&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;redis_port&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;os.environ/REDIS_PORT&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;redis_password&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;os.environ/REDIS_PASSWORD&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nt"&gt;general_settings&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;master_key&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;os.environ/LITELLM_MASTER_KEY&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;database_url&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;os.environ/DATABASE_URL&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;Two deployments sharing a &lt;code&gt;model_name&lt;/code&gt; form a group, and the routing strategy
+spreads requests between them. &lt;code&gt;least-busy&lt;/code&gt; picks the deployment with the fewest
+calls in progress. A failing deployment goes into &lt;em&gt;cooldown&lt;/em&gt; alone, not the whole
+group [13].&lt;/p&gt;
+&lt;div class="hx:overflow-x-auto hx:mt-6 hx:flex hx:rounded-lg hx:border hx:py-2 hx:ltr:pr-4 hx:rtl:pl-4 hx:contrast-more:border-current hx:contrast-more:dark:border-current hx:border-amber-200 hx:bg-amber-100 hx:text-amber-900 hx:dark:border-amber-200/30 hx:dark:bg-amber-900/30 hx:dark:text-amber-200"&gt;
+&lt;div class="hx:ltr:pl-3 hx:ltr:pr-2 hx:rtl:pr-3 hx:rtl:pl-2"&gt;&lt;svg height=1.2em class="hx:inline-block hx:align-middle" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"&gt;&lt;path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/&gt;&lt;/svg&gt;&lt;/div&gt;
+&lt;div class="hx:w-full hx:min-w-0 hx:leading-7"&gt;
+&lt;div class="hx:mt-6 hx:leading-7 hx:first:mt-0"&gt;&lt;strong&gt;Zero costs = budgets ignored.&lt;/strong&gt; A model whose two costs are 0 is subject to no
+budget check [11]. The model is hosted locally, but it must still be given an
+&lt;strong&gt;internal cost&lt;/strong&gt;, calibrated in GPU-hours (see
+&lt;a href="https://go-llmflow.github.io/docs/0.24/guides/fairshare/accounting/"&gt;accounting&lt;/a&gt;). Otherwise &lt;code&gt;max_budget&lt;/code&gt; protects
+nothing. Costs are declared under &lt;code&gt;model_info&lt;/code&gt; [22]. &lt;strong&gt;Measured on LiteLLM
+1.106.2&lt;/strong&gt;: without a cost, spend stays at 0; with a cost, it equals exactly
+&lt;code&gt;3 c_in + 1 c_out&lt;/code&gt; for 3 input tokens and 1 output token.&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;h3 data-hextra-search-id="teams-keys"&gt;Teams, keys and limits&lt;span class="hx:absolute hx:-mt-20" id="teams-keys"&gt;&lt;/span&gt;
+&lt;a href="#teams-keys" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-bash" data-lang="bash"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# One team per institution (indicative values)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;curl -X POST https://llm.example.org/team/new &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; -H &lt;span class="s2"&gt;&amp;#34;Authorization: Bearer &lt;/span&gt;&lt;span class="k"&gt;$(&lt;/span&gt;cat ~/.config/litellm/master&lt;span class="k"&gt;)&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&lt;/span&gt; &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; -H &lt;span class="s1"&gt;&amp;#39;Content-Type: application/json&amp;#39;&lt;/span&gt; &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; -d &lt;span class="s1"&gt;&amp;#39;{&amp;#34;team_alias&amp;#34;: &amp;#34;instA&amp;#34;, &amp;#34;max_budget&amp;#34;: 1300, &amp;#34;budget_duration&amp;#34;: &amp;#34;30d&amp;#34;,
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="s1"&gt; &amp;#34;max_parallel_requests&amp;#34;: 200, &amp;#34;metadata&amp;#34;: {&amp;#34;priority&amp;#34;: &amp;#34;instA&amp;#34;}}&amp;#39;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;curl -X POST https://llm.example.org/team/new ... &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; -d &lt;span class="s1"&gt;&amp;#39;{&amp;#34;team_alias&amp;#34;: &amp;#34;instB&amp;#34;, &amp;#34;max_budget&amp;#34;: 300, &amp;#34;budget_duration&amp;#34;: &amp;#34;30d&amp;#34;,
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="s1"&gt; &amp;#34;max_parallel_requests&amp;#34;: 50, &amp;#34;metadata&amp;#34;: {&amp;#34;priority&amp;#34;: &amp;#34;instB&amp;#34;}}&amp;#39;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# One key per user, attached to their team&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;curl -X POST https://llm.example.org/key/generate ... &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; -d &lt;span class="s1"&gt;&amp;#39;{&amp;#34;team_id&amp;#34;: &amp;#34;&amp;lt;instB-id&amp;gt;&amp;#34;, &amp;#34;key_alias&amp;#34;: &amp;#34;bob-vscode&amp;#34;,
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="s1"&gt; &amp;#34;rpm_limit&amp;#34;: 60, &amp;#34;max_parallel_requests&amp;#34;: 8}&amp;#39;&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;A key that carries a &lt;code&gt;team_id&lt;/code&gt; is governed by the team&amp;rsquo;s budget, not by its
+owner&amp;rsquo;s personal budget. The limits &lt;code&gt;tpm_limit&lt;/code&gt;, &lt;code&gt;rpm_limit&lt;/code&gt; and
+&lt;code&gt;max_parallel_requests&lt;/code&gt; can be set on the team, the user or the key. For one
+per-model limit, the key&amp;rsquo;s wins over the team&amp;rsquo;s [11]. The budget resets at each
+&lt;code&gt;budget_duration&lt;/code&gt; [11].&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Do not pass the secret on the command line.&lt;/strong&gt; The examples read the master key
+from a file readable by its owner only, never from an environment variable or an
+argument visible in &lt;code&gt;ps&lt;/code&gt;.&lt;/p&gt;
+&lt;h3 data-hextra-search-id="fair-share-inference"&gt;Fair-share for inference: reservation by priority&lt;span class="hx:absolute hx:-mt-20" id="fair-share-inference"&gt;&lt;/span&gt;
+&lt;a href="#fair-share-inference" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;LiteLLM&amp;rsquo;s &lt;code&gt;dynamic_rate_limiter_v3&lt;/code&gt; shares a model&amp;rsquo;s TPM/RPM capacity between
+teams. &lt;strong&gt;Below&lt;/strong&gt; a saturation threshold anyone may borrow the free capacity.
+&lt;strong&gt;Above&lt;/strong&gt; it, each priority is brought back to its reserved share [14]. It is a
+direct transposition of the Slurm model: lending of surplus, guarantee at
+saturation.&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-yaml" data-lang="yaml"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nt"&gt;litellm_settings&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;callbacks&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;dynamic_rate_limiter_v3&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;priority_reservation&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;instA&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;0.8125&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;instB&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;0.1875&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;saturation_threshold&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;0.8&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;A key&amp;rsquo;s priority comes from its team&amp;rsquo;s &lt;code&gt;metadata.priority&lt;/code&gt;, which wins over the
+key&amp;rsquo;s. Keys with no priority fall into a common pool (&lt;code&gt;default_priority&lt;/code&gt;, 0.25 by
+default) [14]. The model&amp;rsquo;s capacity (&lt;code&gt;rpm&lt;/code&gt;/&lt;code&gt;tpm&lt;/code&gt; of the deployments) is measured
+in acceptance on your B300s, at the target latency.&lt;/p&gt;
+&lt;div class="hx:overflow-x-auto hx:mt-6 hx:flex hx:rounded-lg hx:border hx:py-2 hx:ltr:pr-4 hx:rtl:pl-4 hx:contrast-more:border-current hx:contrast-more:dark:border-current hx:border-amber-200 hx:bg-amber-100 hx:text-amber-900 hx:dark:border-amber-200/30 hx:dark:bg-amber-900/30 hx:dark:text-amber-200"&gt;
+&lt;div class="hx:ltr:pl-3 hx:ltr:pr-2 hx:rtl:pr-3 hx:rtl:pl-2"&gt;&lt;svg height=1.2em class="hx:inline-block hx:align-middle" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"&gt;&lt;path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/&gt;&lt;/svg&gt;&lt;/div&gt;
+&lt;div class="hx:w-full hx:min-w-0 hx:leading-7"&gt;
+&lt;div class="hx:mt-6 hx:leading-7 hx:first:mt-0"&gt;(1) Priority reservation is marked &lt;strong&gt;beta&lt;/strong&gt; and requires a &lt;strong&gt;LiteLLM Enterprise
+licence&lt;/strong&gt; (30-day free trial) [14]. (2) Borrowed capacity is not taken back when
+strict mode engages, and TPM is checked at admission: a burst can exceed the
+limit. (3) With several LiteLLM instances, strict mode may engage late on a node
+that has not seen the traffic (60 s cache by default) [14].&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;h2 data-hextra-search-id="what-litellm-forwards"&gt;What LiteLLM forwards to vLLM: measurements&lt;span class="hx:absolute hx:-mt-20" id="what-litellm-forwards"&gt;&lt;/span&gt;
+&lt;a href="#what-litellm-forwards" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The documentation does not say what reaches vLLM. We &lt;strong&gt;measured&lt;/strong&gt; it on
+&lt;strong&gt;23 October 2026&lt;/strong&gt;. A real &lt;strong&gt;LiteLLM 1.106.2&lt;/strong&gt; was placed in front of a fake
+vLLM written in Go that records every request it receives: path, headers, JSON
+body. Control: a request sent directly to the fake vLLM with &lt;code&gt;priority: 99&lt;/code&gt; and
+the header &lt;code&gt;X-Vllm-Priority: 99&lt;/code&gt; shows up intact. So the instrument does see what
+it looks for.&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Sent by the client to LiteLLM&lt;/th&gt;
+&lt;th&gt;Received by vLLM&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;&amp;quot;priority&amp;quot;: 10&lt;/code&gt; in the body&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;nothing&lt;/strong&gt;: LiteLLM consumes this field for &lt;em&gt;its own&lt;/em&gt; beta scheduler [15] (response header &lt;code&gt;x-litellm-request-prioritization-used&lt;/code&gt;, +300 ms latency)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;&amp;quot;extra_body&amp;quot;: {&amp;quot;priority&amp;quot;: 3}&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;&amp;quot;priority&amp;quot;: 3&lt;/code&gt; in the body&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;deployment &lt;code&gt;extra_body: {priority: 5}&lt;/code&gt; + client &lt;code&gt;extra_body&lt;/code&gt; at 0&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;&amp;quot;priority&amp;quot;: 0&lt;/code&gt;: &lt;strong&gt;the client overrides the deployment&amp;rsquo;s value&lt;/strong&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;deployment &lt;code&gt;extra_headers: {X-Vllm-Priority: &amp;quot;6&amp;quot;}&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;X-Vllm-Priority: 6&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;same + client &lt;code&gt;X-Vllm-Priority: 0&lt;/code&gt;, client headers forwarded [23]&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;X-Vllm-Priority: &amp;quot;0, 6&amp;quot;&lt;/code&gt;: values merged, no longer an integer&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;same + client &lt;code&gt;X-Vllm-Priority: 0&lt;/code&gt; and &lt;code&gt;x-pass-X-Vllm-Priority: 1&lt;/code&gt;, &lt;strong&gt;default settings&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;X-Vllm-Priority: 6&lt;/code&gt;: the client&amp;rsquo;s headers do not pass&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;&lt;strong&gt;Conclusion: the only safe configuration.&lt;/strong&gt;&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Pin the priority &lt;strong&gt;by header&lt;/strong&gt; in the deployment (&lt;code&gt;extra_headers&lt;/code&gt;), never by
+&lt;code&gt;extra_body&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Leave &lt;code&gt;forward_client_headers_to_llm_api&lt;/code&gt; &lt;strong&gt;disabled&lt;/strong&gt; (the default).&lt;/li&gt;
+&lt;li&gt;A client can still slip &lt;code&gt;priority&lt;/code&gt; into the body through &lt;code&gt;extra_body&lt;/code&gt;. But
+vLLM gives the header precedence over the body [10], so the pinned header wins.&lt;/li&gt;
+&lt;li&gt;Do not use LiteLLM&amp;rsquo;s own &lt;code&gt;priority&lt;/code&gt; field: it enables a beta scheduler that
+adds latency.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;The class of service (interactive or batch) is then chosen by the &lt;strong&gt;model name&lt;/strong&gt;
+(&lt;code&gt;large-model&lt;/code&gt; or &lt;code&gt;large-model-batch&lt;/code&gt;). The keys of batch scripts are restricted
+to the second.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="fairq"&gt;Split with lending, without a licence&lt;span class="hx:absolute hx:-mt-20" id="fairq"&gt;&lt;/span&gt;
+&lt;a href="#fairq" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Free-edition LiteLLM provides keys, teams, budgets and static limits (&lt;code&gt;tpm_limit&lt;/code&gt;,
+&lt;code&gt;rpm_limit&lt;/code&gt;, &lt;code&gt;max_parallel_requests&lt;/code&gt;) [11]. What is missing is the &lt;strong&gt;lending&lt;/strong&gt;.
+Static limits at 81.25 / 18.75 leave an absent institution&amp;rsquo;s share unused.&lt;/p&gt;
+&lt;p&gt;The proposal is to reproduce the Slurm scheme (guaranteed share plus preemptible
+borrowing) at request level: a small relay between the gateway and vLLM counts the
+requests in flight per institution. Let &lt;code&gt;C&lt;/code&gt; be the sustainable concurrency of an
+instance, measured (see &lt;a href="https://go-llmflow.github.io/docs/0.24/guides/fairshare/accounting/#calibration"&gt;accounting&lt;/a&gt;).&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;If the institution has fewer than &lt;code&gt;p x C&lt;/code&gt; requests in flight (&lt;code&gt;p&lt;/code&gt; = 0.8125 or
+0.1875), the request is &lt;strong&gt;within its share&lt;/strong&gt;: &lt;code&gt;X-Vllm-Priority&lt;/code&gt; is 0
+(interactive) or 1 (batch).&lt;/li&gt;
+&lt;li&gt;Otherwise it is &lt;strong&gt;borrowing&lt;/strong&gt;: priority 10 (interactive) or 11 (batch).&lt;/li&gt;
+&lt;li&gt;The relay &lt;strong&gt;overwrites&lt;/strong&gt; any &lt;code&gt;priority&lt;/code&gt; and any &lt;code&gt;X-Vllm-Priority&lt;/code&gt; coming from the
+client.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;vLLM then does exactly what is expected (see &lt;a href="#priority"&gt;priority&lt;/a&gt;): within-share
+requests are admitted before borrowing ones; when KV memory runs short, borrowers
+are preempted first. Without competition an institution takes everything; under
+saturation each gets its share back.&lt;/p&gt;
+&lt;p&gt;This is the policy the &lt;a href="https://go-llmflow.github.io/docs/0.24/gateway/#fair-share-with-borrowing"&gt;gateway&lt;/a&gt;
+(v0.24.0) implements in its &lt;code&gt;fairshare&lt;/code&gt; package, with the two refinements the
+simulator forced (the reservation test counts within-share requests, and usage is
+charged at release). It replaces LiteLLM and the relay here: it holds the keys,
+organisations, teams and budgets itself, and the shares belong to the
+&lt;strong&gt;organisations&lt;/strong&gt; (the institutions). For this cluster, its configuration (HCL2,
+not YAML) would be as follows, with the 256-request capacity of the gateway&amp;rsquo;s
+example. This block was run through &lt;code&gt;llmflow-gateway check-config&lt;/code&gt; v0.24.0, with
+the key files present:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-hcl" data-lang="hcl"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;master_key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/master.key&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;cache_isolation&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;org&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;cache_salt_key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/cache-salt.key&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;org&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;instA&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; share&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="m"&gt;8125&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="k"&gt;team&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;a-physics&amp;#34;&lt;/span&gt; {}
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="k"&gt;team&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;a-biology&amp;#34;&lt;/span&gt; {}
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;org&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;instB&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; share&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="m"&gt;1875&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="k"&gt;team&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;b-lab&amp;#34;&lt;/span&gt; {}
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;pool &amp;#34;b300&amp;#34; { capacity&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="m"&gt;256&lt;/span&gt; }
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;model&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;large-model&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; upstream_model&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;meta-llama/Llama-3.3-70B-Instruct&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; pool&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;b300&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; class&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;interactive&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/vllm.key&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="k"&gt;cost&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; input_per_mtok&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="m"&gt;02&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; output_per_mtok&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="m"&gt;20&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; cached_per_mtok&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="m"&gt;002&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; }
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; upstream &amp;#34;gpu01&amp;#34; { base_url&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;http://gpu01.internal:8000&amp;#34;&lt;/span&gt; }
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; upstream &amp;#34;gpu02&amp;#34; { base_url&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;http://gpu02.internal:8000&amp;#34;&lt;/span&gt; }
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}&lt;span class="c1"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# the same upstreams again, with class = &amp;#34;batch&amp;#34;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;model&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;large-model-batch&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; upstream_model&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;meta-llama/Llama-3.3-70B-Instruct&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; pool&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;b300&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; class&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;batch&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/vllm.key&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="k"&gt;cost&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; input_per_mtok&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="m"&gt;02&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; output_per_mtok&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="m"&gt;20&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; cached_per_mtok&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="m"&gt;002&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; }
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; upstream &amp;#34;gpu01&amp;#34; { base_url&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;http://gpu01.internal:8000&amp;#34;&lt;/span&gt; }
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; upstream &amp;#34;gpu02&amp;#34; { base_url&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;http://gpu02.internal:8000&amp;#34;&lt;/span&gt; }
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;The &lt;code&gt;cost&lt;/code&gt; values are in GPU-hours per million tokens; calibrate them as in the
+&lt;a href="https://go-llmflow.github.io/docs/0.24/guides/fairshare/accounting/#calibration"&gt;accounting&lt;/a&gt; page. Note the gateway&amp;rsquo;s
+&lt;a href="https://go-llmflow.github.io/docs/0.24/gateway/#limitations"&gt;limitations&lt;/a&gt;, in particular one replica
+per pool.&lt;/p&gt;
+&lt;div class="hx:overflow-x-auto hx:mt-6 hx:flex hx:rounded-lg hx:border hx:py-2 hx:ltr:pr-4 hx:rtl:pl-4 hx:contrast-more:border-current hx:contrast-more:dark:border-current hx:border-blue-200 hx:bg-blue-100 hx:text-blue-900 hx:dark:border-blue-200/30 hx:dark:bg-blue-900/30 hx:dark:text-blue-200"&gt;
+&lt;div class="hx:ltr:pl-3 hx:ltr:pr-2 hx:rtl:pr-3 hx:rtl:pl-2"&gt;&lt;svg height=1.2em class="hx:inline-block hx:align-middle" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"&gt;&lt;path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/&gt;&lt;/svg&gt;&lt;/div&gt;
+&lt;div class="hx:w-full hx:min-w-0 hx:leading-7"&gt;
+&lt;div class="hx:mt-6 hx:leading-7 hx:first:mt-0"&gt;&lt;strong&gt;To validate: how the relay knows the institution.&lt;/strong&gt; Two routes. (a) &lt;em&gt;One
+deployment per institution&lt;/em&gt; (&lt;code&gt;api_base: http://relay:9000/instA/v1&lt;/code&gt;), reachable
+only by the team&amp;rsquo;s keys: safe, but one must check how LiteLLM exposes a single
+model name to two teams. (b) The &lt;code&gt;X-Litellm-User_api_key_*&lt;/code&gt; headers that LiteLLM
+adds with &lt;code&gt;add_user_information_to_llm_headers&lt;/code&gt;: we observed them (user id, key
+fingerprint). The presence of the &lt;em&gt;team&lt;/em&gt; id could not be verified, because our test
+ran without a database, hence without teams.&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;h2 data-hextra-search-id="alternatives"&gt;Alternatives without a licence&lt;span class="hx:absolute hx:-mt-20" id="alternatives"&gt;&lt;/span&gt;
+&lt;a href="#alternatives" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Synthesis of each product&amp;rsquo;s official documentation, consulted on 23 October 2026.
+Y = native; P = partial; &amp;ndash; = absent; $ = paid offer. Columns: keys and teams,
+rate limits, budgets, spreading between instances, reservation with lending.&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Gateway&lt;/th&gt;
+&lt;th&gt;Keys&lt;/th&gt;
+&lt;th&gt;Limits&lt;/th&gt;
+&lt;th&gt;Budgets&lt;/th&gt;
+&lt;th&gt;Spread&lt;/th&gt;
+&lt;th&gt;Lending&lt;/th&gt;
+&lt;th&gt;Remarks&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;LiteLLM (MIT, Python)&lt;/td&gt;
+&lt;td&gt;Y&lt;/td&gt;
+&lt;td&gt;Y&lt;/td&gt;
+&lt;td&gt;Y&lt;/td&gt;
+&lt;td&gt;Y&lt;/td&gt;
+&lt;td&gt;$&lt;/td&gt;
+&lt;td&gt;lending = Enterprise beta [14]&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Bifrost (Apache-2.0, Go) [26]&lt;/td&gt;
+&lt;td&gt;?&lt;/td&gt;
+&lt;td&gt;Y&lt;/td&gt;
+&lt;td&gt;Y&lt;/td&gt;
+&lt;td&gt;P&lt;/td&gt;
+&lt;td&gt;&amp;ndash;&lt;/td&gt;
+&lt;td&gt;teams described in the free docs, but &amp;ldquo;governance across teams and customers&amp;rdquo; is listed as Enterprise: &lt;strong&gt;to test&lt;/strong&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Apache APISIX (Apache-2.0) [27]&lt;/td&gt;
+&lt;td&gt;Y&lt;/td&gt;
+&lt;td&gt;Y&lt;/td&gt;
+&lt;td&gt;P&lt;/td&gt;
+&lt;td&gt;Y&lt;/td&gt;
+&lt;td&gt;&amp;ndash;&lt;/td&gt;
+&lt;td&gt;standalone YAML mode + Redis, no Kubernetes&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Envoy AI Gateway [28]&lt;/td&gt;
+&lt;td&gt;&amp;ndash;&lt;/td&gt;
+&lt;td&gt;Y&lt;/td&gt;
+&lt;td&gt;P&lt;/td&gt;
+&lt;td&gt;P&lt;/td&gt;
+&lt;td&gt;&amp;ndash;&lt;/td&gt;
+&lt;td&gt;token-based limits; Kubernetes required&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Gateway API Inference Ext. / llm-d [29]&lt;/td&gt;
+&lt;td&gt;&amp;ndash;&lt;/td&gt;
+&lt;td&gt;&amp;ndash;&lt;/td&gt;
+&lt;td&gt;&amp;ndash;&lt;/td&gt;
+&lt;td&gt;Y&lt;/td&gt;
+&lt;td&gt;P&lt;/td&gt;
+&lt;td&gt;routing on KV cache; Kubernetes required; weighted fairness announced as &amp;ldquo;planned&amp;rdquo;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;vLLM production-stack [30]&lt;/td&gt;
+&lt;td&gt;&amp;ndash;&lt;/td&gt;
+&lt;td&gt;&amp;ndash;&lt;/td&gt;
+&lt;td&gt;&amp;ndash;&lt;/td&gt;
+&lt;td&gt;Y&lt;/td&gt;
+&lt;td&gt;&amp;ndash;&lt;/td&gt;
+&lt;td&gt;router only&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Portkey (MIT) [31]&lt;/td&gt;
+&lt;td&gt;$&lt;/td&gt;
+&lt;td&gt;?&lt;/td&gt;
+&lt;td&gt;?&lt;/td&gt;
+&lt;td&gt;Y&lt;/td&gt;
+&lt;td&gt;&amp;ndash;&lt;/td&gt;
+&lt;td&gt;key management is paid&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Kong AI Gateway [32]&lt;/td&gt;
+&lt;td&gt;$&lt;/td&gt;
+&lt;td&gt;$&lt;/td&gt;
+&lt;td&gt;&amp;ndash;&lt;/td&gt;
+&lt;td&gt;$&lt;/td&gt;
+&lt;td&gt;&amp;ndash;&lt;/td&gt;
+&lt;td&gt;advanced plugins are Enterprise&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;&lt;strong&gt;No free gateway natively provides lending with a guarantee.&lt;/strong&gt; The only project
+that comes close (llm-d, weighted fairness) requires Kubernetes and still calls it
+&amp;ldquo;planned&amp;rdquo;. For a cluster without Kubernetes: &lt;strong&gt;free LiteLLM plus a relay&lt;/strong&gt; covers
+the five needs without a licence and keeps the keys, budgets and accounts
+described here. Bifrost, written in Go, is an alternative to evaluate &lt;em&gt;if&lt;/em&gt; its
+teams turn out to be free; the relay would plug into it the same way.&lt;/p&gt;</description></item><item><title>One accounting, in GPU-hours</title><link>https://go-llmflow.github.io/docs/0.24/guides/fairshare/accounting/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://go-llmflow.github.io/docs/0.24/guides/fairshare/accounting/</guid><description>
+&lt;h1 data-hextra-search-id="accounting"&gt;One accounting&lt;/h1&gt;&lt;p&gt;Batch is counted in GPU-equivalent hours (&lt;code&gt;sreport&lt;/code&gt;, after
+&lt;code&gt;TRESBillingWeights&lt;/code&gt;). Inference is counted in tokens, per team (the gateway&amp;rsquo;s
+spend logs). They are reconciled as follows:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Over the period (a month), read the GPU-hours of the &lt;code&gt;svc_llm&lt;/code&gt; account:
+&lt;code&gt;H_svc&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Read each team&amp;rsquo;s spend in the gateway: &lt;code&gt;D_A&lt;/code&gt;, &lt;code&gt;D_B&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Charge &lt;code&gt;H_svc x D_A / (D_A + D_B)&lt;/code&gt; to A, and the remainder to B.&lt;/li&gt;
+&lt;li&gt;Compare each institution&amp;rsquo;s total consumption (batch plus charged inference)
+with its share (81.25 % / 18.75 %).&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 data-hextra-search-id="calibration"&gt;Calibrating the internal cost&lt;span class="hx:absolute hx:-mt-20" id="calibration"&gt;&lt;/span&gt;
+&lt;a href="#calibration" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;strong&gt;Goal:&lt;/strong&gt; 1 unit of gateway spend = 1 GPU-hour. A saturated 8-GPU instance then
+&amp;ldquo;spends&amp;rdquo; 8 units per hour, and &lt;code&gt;max_budget&lt;/code&gt; becomes a quota of inference
+GPU-hours, directly comparable with batch.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;1. Measure the capacity.&lt;/strong&gt; Once per model and per configuration (TP, KV-cache
+dtype), with &lt;code&gt;vllm bench serve&lt;/code&gt; [24]. Use a mix of lengths representative of the
+real usage (for example 2,000 input tokens and 300 output tokens for a code
+assistant). Raise &lt;code&gt;--max-concurrency&lt;/code&gt; up to the limit of the service target, for
+instance a p99 time to first token under 2 s:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-bash" data-lang="bash"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;vllm bench serve --backend openai-chat --endpoint /v1/chat/completions &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --host gpu01.internal --port &lt;span class="m"&gt;8000&lt;/span&gt; --model &amp;lt;model&amp;gt; &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --dataset-name random --random-input-len &lt;span class="m"&gt;2000&lt;/span&gt; --random-output-len &lt;span class="m"&gt;300&lt;/span&gt; &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --num-prompts &lt;span class="m"&gt;2000&lt;/span&gt; --max-concurrency &lt;span class="m"&gt;64&lt;/span&gt; --save-result&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;At the chosen concurrency &lt;code&gt;C&lt;/code&gt; (which also serves the
+&lt;a href="https://go-llmflow.github.io/docs/0.24/guides/fairshare/inference/#fairq"&gt;fair-share relay&lt;/a&gt;), read the output
+throughput &lt;code&gt;T_out&lt;/code&gt; and the total throughput &lt;code&gt;T_tot&lt;/code&gt; in tokens/s, printed by the
+tool [24]. The input throughput is &lt;code&gt;T_in = T_tot - T_out&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;2. Split the cost of an instance-hour.&lt;/strong&gt; Prefill (input) costs much less per
+token than generation. Fix a ratio &lt;code&gt;r = c_out / c_in&lt;/code&gt;, typically &lt;code&gt;r = 4&lt;/code&gt;, and
+solve:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;3600 (c_in T_in + c_out T_out) = 8
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; =&amp;gt; c_in = 8 / (3600 (T_in + r T_out)), c_out = r c_in&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;&lt;em&gt;A fictitious example&lt;/em&gt;, to illustrate the computation (the real figures come out
+of step 1): &lt;code&gt;T_in = 40,000&lt;/code&gt;, &lt;code&gt;T_out = 6,000&lt;/code&gt; tokens/s, &lt;code&gt;r = 4&lt;/code&gt;. Then
+&lt;code&gt;c_in = 8 / (3600 x 64,000) = 3.5e-8&lt;/code&gt; and &lt;code&gt;c_out = 1.4e-7&lt;/code&gt; unit per token.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;3. Tokens served from the prefix cache.&lt;/strong&gt; LiteLLM warns that a model with
+custom pricing bills these tokens at 0 as long as &lt;code&gt;cache_read_input_token_cost&lt;/code&gt;
+is not set (a warning observed at LiteLLM 1.106.2 start-up). Set it to about
+&lt;code&gt;c_in / 10&lt;/code&gt;: these tokens are not recomputed, but they occupy KV memory.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Why not a cost per second?&lt;/strong&gt; LiteLLM accepts &lt;code&gt;cost_per_second&lt;/code&gt; [22]. But vLLM
+processes dozens of requests &lt;em&gt;simultaneously&lt;/em&gt; on one instance: billing each by its
+duration would make it pay for the whole instance, and the sum would far exceed
+the real 8 GPU-hours. The per-token cost is the right model.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Recalibrate&lt;/strong&gt; at each change of model, vLLM version or KV-cache dtype, and check
+once a month. The GPU-hours of the &lt;code&gt;svc_llm&lt;/code&gt; account read from &lt;code&gt;sreport&lt;/code&gt; should
+stay close to the month&amp;rsquo;s total gateway spend divided by the average occupancy.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="compensation"&gt;Compensation&lt;span class="hx:absolute hx:-mt-20" id="compensation"&gt;&lt;/span&gt;
+&lt;a href="#compensation" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;If, over a quarter, an institution consumed markedly more than its share through
+inference, the committee may correct the Slurm &lt;code&gt;Fairshare&lt;/code&gt; values of the next
+quarter. Batch fair-share already rebalances by itself within the half-life
+window: compensation is only an exceptional adjustment.&lt;/p&gt;</description></item><item><title>Access from VS Code</title><link>https://go-llmflow.github.io/docs/0.24/guides/fairshare/vscode/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://go-llmflow.github.io/docs/0.24/guides/fairshare/vscode/</guid><description>
+&lt;h1 data-hextra-search-id="vscode"&gt;Access from VS Code&lt;/h1&gt;&lt;p&gt;Two uses, two paths: the &lt;strong&gt;code assistant&lt;/strong&gt; talks to the gateway over HTTPS;
+&lt;strong&gt;development and job submission&lt;/strong&gt; go over SSH to the login node.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="continue"&gt;Code assistant: the Continue extension&lt;span class="hx:absolute hx:-mt-20" id="continue"&gt;&lt;/span&gt;
+&lt;a href="#continue" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Continue accepts any OpenAI-compatible provider, LiteLLM and vLLM included:
+&lt;code&gt;provider: openai&lt;/code&gt; with a custom &lt;code&gt;apiBase&lt;/code&gt; [16]. The configuration file
+(&lt;code&gt;~/.continue/config.yaml&lt;/code&gt; on macOS and Linux, &lt;code&gt;%USERPROFILE%\.continue\config.yaml&lt;/code&gt;
+on Windows; &lt;a href="https://docs.continue.dev/customize/deep-dives/configuration" target="_blank" rel="noopener"&gt;Continue configuration&lt;/a&gt;) requires the fields &lt;code&gt;name&lt;/code&gt;, &lt;code&gt;version&lt;/code&gt; and
+&lt;code&gt;schema&lt;/code&gt;. Each model declares &lt;code&gt;roles&lt;/code&gt; among &lt;code&gt;chat&lt;/code&gt;, &lt;code&gt;autocomplete&lt;/code&gt;, &lt;code&gt;embed&lt;/code&gt;,
+&lt;code&gt;rerank&lt;/code&gt;, &lt;code&gt;edit&lt;/code&gt;, &lt;code&gt;apply&lt;/code&gt; and &lt;code&gt;summarize&lt;/code&gt; [17].&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-yaml" data-lang="yaml"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nt"&gt;name&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;B300 platform&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nt"&gt;version&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;1.0.0&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nt"&gt;schema&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;v1&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nt"&gt;models&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;- &lt;span class="nt"&gt;name&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;Large model (B300)&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;provider&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;openai&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;model&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;large-model &lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="c"&gt;# model_name exposed by the gateway&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;apiBase&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;https://llm.example.org/v1&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;apiKey&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;${{ secrets.B300_GATEWAY_KEY }}&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;roles&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="l"&gt;chat, edit, apply, summarize]&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;defaultCompletionOptions&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;contextLength&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;131072&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;maxTokens&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;4096&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;- &lt;span class="nt"&gt;name&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;Fast completion (B300)&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;provider&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;openai&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;model&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;small-code-model&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;apiBase&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;https://llm.example.org/v1&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;apiKey&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;${{ secrets.B300_GATEWAY_KEY }}&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;roles&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="l"&gt;autocomplete]&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;The key&lt;/strong&gt; is the user&amp;rsquo;s virtual key, attached to the team of their institution:
+their consumption lands in the right share. It is referenced as a secret
+(&lt;code&gt;${{ secrets.... }}&lt;/code&gt; [17]), never written in clear in a versioned file.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Autocompletion&lt;/strong&gt; sends a request on every keystroke. Serve it with a &lt;em&gt;small&lt;/em&gt;
+dedicated model (an instance of a few GPUs, or MIG) and set an &lt;code&gt;rpm_limit&lt;/code&gt; on the
+key, or it will eat the institution&amp;rsquo;s quota.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;contextLength&lt;/code&gt; must not exceed the vLLM instance&amp;rsquo;s &lt;code&gt;--max-model-len&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 data-hextra-search-id="claude-code"&gt;Code assistant: Claude Code&lt;span class="hx:absolute hx:-mt-20" id="claude-code"&gt;&lt;/span&gt;
+&lt;a href="#claude-code" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Claude Code can also talk to the gateway, through &lt;code&gt;ANTHROPIC_BASE_URL&lt;/code&gt;, with the
+virtual key as the credential. The full, sourced instructions are on the
+&lt;a href="https://go-llmflow.github.io/docs/0.24/agents/#claude-code"&gt;Coding agents&lt;/a&gt; page; the short version:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Models.&lt;/strong&gt; Anthropic does not support routing Claude Code to non-Claude models
+through any gateway, so Claude Code against the local vLLM models of this cluster is
+possible but &lt;strong&gt;unsupported by Anthropic&lt;/strong&gt;. The supported path is Claude models through
+the gateway&amp;rsquo;s opt-in &lt;code&gt;anthropic&lt;/code&gt; provider (gateway v0.12.0), billed to the
+organisation&amp;rsquo;s API account. Pooling Pro or Max subscriptions is not allowed.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Credential.&lt;/strong&gt; Use &lt;code&gt;apiKeyHelper&lt;/code&gt; in &lt;code&gt;~/.claude/settings.json&lt;/code&gt;, a command that prints
+the key from a file of mode 0600. Never put the key in the project&amp;rsquo;s committed
+&lt;code&gt;.claude/settings.json&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;VS Code.&lt;/strong&gt; The documented setup puts the gateway variables, key included, in
+&lt;code&gt;claudeCode.environmentVariables&lt;/code&gt; in VS Code&amp;rsquo;s user settings: keep that file out of
+any synced or committed location. A setup with the key file only, using
+&lt;code&gt;claudeCode.disableLoginPrompt&lt;/code&gt;, is not verified against a gateway.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Project.&lt;/strong&gt; Since gateway v0.13.0, a project can be named with an
+&lt;code&gt;X-Llmflow-Project&lt;/code&gt; header, set in the repository&amp;rsquo;s &lt;code&gt;.claude/settings.json&lt;/code&gt; as
+&lt;code&gt;ANTHROPIC_CUSTOM_HEADERS&lt;/code&gt;, or with &lt;code&gt;requestOptions.headers&lt;/code&gt; in Continue.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 data-hextra-search-id="remote-ssh"&gt;Development and jobs: Remote-SSH&lt;span class="hx:absolute hx:-mt-20" id="remote-ssh"&gt;&lt;/span&gt;
+&lt;a href="#remote-ssh" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Remote-SSH reads the user&amp;rsquo;s &lt;code&gt;~/.ssh/config&lt;/code&gt; [18]. Target the &lt;strong&gt;login node&lt;/strong&gt;, never
+a GPU node: GPU nodes are reached only through a Slurm job, otherwise the work
+escapes fair-share and cgroup isolation.&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;# ~/.ssh/config
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;Host b300-bastion
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; HostName bastion.example.org
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; User alice
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; IdentityFile ~/.ssh/id_ed25519_b300
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;Host b300-login
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; HostName login.b300.internal
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; User alice
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; IdentityFile ~/.ssh/id_ed25519_b300
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ProxyJump b300-bastion&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-json" data-lang="json"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;// settings.json (VS Code, user)
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;remote.SSH.remotePlatform&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="nt"&gt;&amp;#34;b300-login&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;linux&amp;#34;&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="p"&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;&lt;code&gt;remote.SSH.remotePlatform&lt;/code&gt; maps a host to its platform [18]. The login node is
+shared by many users, so also enable &lt;strong&gt;Remote.SSH: Remote Server Listen On
+Socket&lt;/strong&gt; in the Settings UI (the page cited names it only by that label). The
+VS Code server then listens on a Unix socket locked to the user instead of a
+forwarded TCP port. This needs a Linux or macOS host, disables connection
+multiplexing, and makes public-key authentication recommended
+(&lt;a href="https://code.visualstudio.com/docs/remote/troubleshooting" target="_blank" rel="noopener"&gt;Remote Development troubleshooting&lt;/a&gt;).&lt;/p&gt;
+&lt;div class="hx:overflow-x-auto hx:mt-6 hx:flex hx:rounded-lg hx:border hx:py-2 hx:ltr:pr-4 hx:rtl:pl-4 hx:contrast-more:border-current hx:contrast-more:dark:border-current hx:border-amber-200 hx:bg-amber-100 hx:text-amber-900 hx:dark:border-amber-200/30 hx:dark:bg-amber-900/30 hx:dark:text-amber-200"&gt;
+&lt;div class="hx:ltr:pl-3 hx:ltr:pr-2 hx:rtl:pr-3 hx:rtl:pl-2"&gt;&lt;svg height=1.2em class="hx:inline-block hx:align-middle" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"&gt;&lt;path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/&gt;&lt;/svg&gt;&lt;/div&gt;
+&lt;div class="hx:w-full hx:min-w-0 hx:leading-7"&gt;
+&lt;div class="hx:mt-6 hx:leading-7 hx:first:mt-0"&gt;The VS Code server consumes CPU and memory on the login node. Set per-user limits
+on that node (systemd cgroups) so that one session does not penalise the others.
+Do not run computation on the login node: go through &lt;code&gt;srun&lt;/code&gt;/&lt;code&gt;sbatch&lt;/code&gt;.&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;</description></item><item><title>Identity with your federation</title><link>https://go-llmflow.github.io/docs/0.24/guides/fairshare/identity/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://go-llmflow.github.io/docs/0.24/guides/fairshare/identity/</guid><description>
+&lt;h1 data-hextra-search-id="identity"&gt;Identity with your federation&lt;/h1&gt;&lt;p&gt;On a cluster co-owned by two institutions, people already have an account at their
+own institution. The aim is that nobody needs a second one: A&amp;rsquo;s and B&amp;rsquo;s users log
+in where they always do, and the gateway learns from that login which team they
+belong to.&lt;/p&gt;
+&lt;p&gt;If the institutions are in a SAML federation such as &lt;strong&gt;RENATER&lt;/strong&gt; (France) or
+&lt;strong&gt;eduGAIN&lt;/strong&gt;, the piece in the middle is
+&lt;a href="https://github.com/go-authn/bridge" target="_blank" rel="noopener"&gt;authn-bridge&lt;/a&gt; (go-authn/bridge): an OpenID
+Connect provider placed in front of the federation. People log in at their own
+university; the gateway, which speaks OpenID Connect, gets a token. The bridge and
+the libraries below are documented in
+&lt;a href="https://github.com/go-authn" target="_blank" rel="noopener"&gt;go-authn&amp;rsquo;s repositories&lt;/a&gt;; this page only shows how
+the gateway is pointed at them.&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-text" data-lang="text"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;user ──&amp;gt; their university (SAML, RENATER / eduGAIN)
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; │
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; v
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; authn-bridge (OpenID Connect provider)
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; │ token
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; v
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; llmflow gateway: sso (administrators), jwt (inference API) ──&amp;gt; vLLM&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;h2 data-hextra-search-id="bridge"&gt;1. Register the gateway at the bridge&lt;span class="hx:absolute hx:-mt-20" id="bridge"&gt;&lt;/span&gt;
+&lt;a href="#bridge" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The gateway is a client of the bridge. This block is authn-bridge&amp;rsquo;s configuration,
+copied from the gateway&amp;rsquo;s README (it is not &lt;code&gt;llmflow-gateway&lt;/code&gt; configuration, so
+&lt;code&gt;check-config&lt;/code&gt; does not apply to it):&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-hcl" data-lang="hcl"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;client&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;llmflow-admin&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; secret_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/authn-bridge/llmflow-admin.secret&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; redirect_uris&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;https://llm.example.org/admin/callback&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; id_token_claims&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="kt"&gt;true&lt;/span&gt;&lt;span class="c1"&gt; # the bridge&amp;#39;s ID tokens carry no claims about the person otherwise
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;h2 data-hextra-search-id="gateway"&gt;2. Point the gateway&amp;rsquo;s &lt;code&gt;sso&lt;/code&gt; and &lt;code&gt;jwt&lt;/code&gt; blocks at the bridge&lt;span class="hx:absolute hx:-mt-20" id="gateway"&gt;&lt;/span&gt;
+&lt;a href="#gateway" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Administrators log in through &lt;code&gt;sso&lt;/code&gt;; users of the inference API present the access
+token through &lt;code&gt;jwt&lt;/code&gt;. The &lt;code&gt;groups&lt;/code&gt; the bridge returns are entitlements held to the
+institution that asserted them, so the &lt;code&gt;role&lt;/code&gt; and &lt;code&gt;map&lt;/code&gt; blocks match them. This
+block was run through &lt;code&gt;llmflow-gateway check-config&lt;/code&gt; v0.24.0 (with the key files
+present, and organisations, a pool and a model alongside):&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-hcl" data-lang="hcl"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;master_key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/master.key&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt;cache_salt_key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/cache-salt.key&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;sso&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; issuer&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;https://bridge.example.org&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; client_id&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;llmflow-admin&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; client_secret_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/sso.secret&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; redirect_url&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;https://llm.example.org/admin/callback&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; scopes&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;openid&amp;#34;, &amp;#34;profile&amp;#34;, &amp;#34;groups&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="k"&gt;role&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; value&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;llm-admins&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; role&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;proxy_admin&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; }
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="k"&gt;role&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; value&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;b-lab-leads&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; role&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;team_admin&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; team&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;b-lab&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; }
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;jwt&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; issuer&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;https://bridge.example.org&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; audience&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;llmflow&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;at+jwt&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="k"&gt;map&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; value&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;b-lab&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; team&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;b-lab&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; }
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;With this, a member of B&amp;rsquo;s laboratory who holds a token with the group &lt;code&gt;b-lab&lt;/code&gt;
+reaches the gateway as a person of team &lt;code&gt;b-lab&lt;/code&gt;: their requests count in B&amp;rsquo;s
+share, their budget and limits are the team&amp;rsquo;s, and the spend report names them.
+The &lt;code&gt;value&lt;/code&gt; strings stand for whatever entitlements your federation really issues
+(for example &lt;code&gt;urn:mace:...&lt;/code&gt; values); read them from a real token before writing
+the blocks.&lt;/p&gt;
+&lt;p&gt;Behind it, the gateway refuses &lt;code&gt;alg: none&lt;/code&gt; and HMAC tokens, requires &lt;code&gt;aud&lt;/code&gt; and
+&lt;code&gt;exp&lt;/code&gt;, and answers every refusal with the same 401. See the
+&lt;a href="https://go-llmflow.github.io/docs/0.24/guides/fairshare/identity/"&gt;Identity page&lt;/a&gt; for the details, for SCIM
+provisioning and for key rotation, and keep in mind its
+&lt;a href="https://go-llmflow.github.io/docs/0.24/gateway/#limitations"&gt;limitations&lt;/a&gt;: a person holding a token
+cannot be revoked individually before it expires, and SSO sessions live in one
+replica.&lt;/p&gt;</description></item><item><title>Security audit, acceptance tests, governance</title><link>https://go-llmflow.github.io/docs/0.24/guides/fairshare/audit-and-acceptance/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://go-llmflow.github.io/docs/0.24/guides/fairshare/audit-and-acceptance/</guid><description>
+&lt;h1 data-hextra-search-id="audit"&gt;Security audit, acceptance and governance&lt;/h1&gt;&lt;h2 data-hextra-search-id="security-audit"&gt;Security audit&lt;span class="hx:absolute hx:-mt-20" id="security-audit"&gt;&lt;/span&gt;
+&lt;a href="#security-audit" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Surface&lt;/th&gt;
+&lt;th&gt;Risk&lt;/th&gt;
+&lt;th&gt;Measure&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Shared GPUs&lt;/td&gt;
+&lt;td&gt;a job reads the GPU memory of another institution&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;ConstrainDevices=yes&lt;/code&gt; [7]; no &lt;em&gt;shard&lt;/em&gt; between institutions [5]&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;vLLM&lt;/td&gt;
+&lt;td&gt;unauthenticated endpoints outside &lt;code&gt;/v1&lt;/code&gt; [10]&lt;/td&gt;
+&lt;td&gt;internal listening only; firewall: only the gateway reaches it&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Gateway&lt;/td&gt;
+&lt;td&gt;quota bypass during a Redis/DB outage [11]&lt;/td&gt;
+&lt;td&gt;&lt;em&gt;fail-closed&lt;/em&gt; options; Redis and Postgres made redundant&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Gateway&lt;/td&gt;
+&lt;td&gt;budgets inoperative on a zero-cost model [11]&lt;/td&gt;
+&lt;td&gt;non-zero internal cost (&lt;a href="https://go-llmflow.github.io/docs/0.24/guides/fairshare/accounting/"&gt;accounting&lt;/a&gt;)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Keys&lt;/td&gt;
+&lt;td&gt;leak through a URL, a command line or an environment variable&lt;/td&gt;
+&lt;td&gt;files with mode 0600; Continue secrets; rotation; one key per use&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Logs&lt;/td&gt;
+&lt;td&gt;confidential prompts stored in the database&lt;/td&gt;
+&lt;td&gt;disable message-content logging; keep only spend metadata&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;vLLM prefix cache&lt;/td&gt;
+&lt;td&gt;timing side channel between institutions: a caller detects a cached prefix by its time to first token (CVE-2025-46570)&lt;/td&gt;
+&lt;td&gt;per-tenant &lt;code&gt;cache_salt&lt;/code&gt; set by the gateway (&lt;a href="https://go-llmflow.github.io/docs/0.24/guides/fairshare/inference/#prefix-cache-isolation"&gt;prefix-cache isolation&lt;/a&gt;); a vLLM instance per tenant if hard isolation is needed&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Login node&lt;/td&gt;
+&lt;td&gt;computation outside Slurm&lt;/td&gt;
+&lt;td&gt;per-user cgroup limits; SSH access to GPU nodes reserved to jobs&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Preemption&lt;/td&gt;
+&lt;td&gt;loss of work of borrowed jobs&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;GraceTime&lt;/code&gt; plus checkpoint; &lt;code&gt;PreemptExemptTime&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;vLLM priority&lt;/td&gt;
+&lt;td&gt;a client gives itself priority 0 through &lt;code&gt;extra_body&lt;/code&gt; (&lt;strong&gt;measured&lt;/strong&gt;, &lt;a href="https://go-llmflow.github.io/docs/0.24/guides/fairshare/inference/#what-litellm-forwards"&gt;measurements&lt;/a&gt;)&lt;/td&gt;
+&lt;td&gt;priority pinned by &lt;em&gt;header&lt;/em&gt;; client-header forwarding disabled; the relay (or the Go gateway) overwrites&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Header forwarding&lt;/td&gt;
+&lt;td&gt;the client&amp;rsquo;s &lt;code&gt;x-pass-*&lt;/code&gt; and &lt;code&gt;x-*&lt;/code&gt; reach vLLM if forwarding is on [23]&lt;/td&gt;
+&lt;td&gt;leave &lt;code&gt;forward_client_headers_to_llm_api&lt;/code&gt; disabled&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;FP64 usage&lt;/td&gt;
+&lt;td&gt;double-precision codes on B300 (10 TFLOPS per server) [12]&lt;/td&gt;
+&lt;td&gt;usage rule in the agreement&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;&lt;strong&gt;Audit anchor.&lt;/strong&gt; The Go gateway (audit log since v0.5.0) keeps a hash-chained audit log of every
+administrative change, with signed checkpoints. A log in the database that the
+operator can edit is only partly trustworthy: deploy the audit &lt;strong&gt;anchor&lt;/strong&gt; on the
+same S3 or Ceph storage the cluster already has, in a bucket created with &lt;strong&gt;Object
+Lock&lt;/strong&gt;, so that exported checkpoints cannot be deleted or rewritten, and check the
+log with &lt;code&gt;llmflow-gateway audit verify --anchor export&lt;/code&gt; and a public key kept
+outside the operators&amp;rsquo; reach. Without an anchor, truncation and rollback go
+undetected. The
+&lt;a href="https://go-llmflow.github.io/docs/0.24/audit/"&gt;Audit and logging&lt;/a&gt; page states what remains open.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Guardrails (gateway v0.6.0).&lt;/strong&gt; Prompts and completions can be checked before
+and after vLLM, on this cluster, without sending them anywhere: &lt;code&gt;hide_secrets&lt;/code&gt;
+masks tokens and URL credentials (using gitsafe&amp;rsquo;s &lt;code&gt;redact&lt;/code&gt;), &lt;code&gt;pii&lt;/code&gt; masks or
+blocks personal data (e-mail, phone, IBAN, French NIR, cards, IP addresses) with
+&lt;a href="https://go-llmflow.github.io/docs/0.24/pii/"&gt;go-llmflow/pii&lt;/a&gt;, and &lt;code&gt;llama_guard&lt;/code&gt; and &lt;code&gt;prompt_guard&lt;/code&gt;
+classify with a Llama Guard or Prompt Guard model served &lt;strong&gt;locally by vLLM&lt;/strong&gt; on
+the cluster, as a model of class &lt;code&gt;guard&lt;/code&gt; that clients cannot call. The classifiers
+see the already-masked text. A guardrail that errs or times out refuses (503) by
+default. The generic &lt;strong&gt;HTTP adapter is off by default&lt;/strong&gt;: it exists only when
+written, and then only with &lt;code&gt;allow_external = true&lt;/code&gt;, because it sends prompts and
+completions out of the site. This block passes &lt;code&gt;check-config&lt;/code&gt; v0.24.0:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-hcl" data-lang="hcl"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;guardrail&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;secrets&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;hide_secrets&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; orgs&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;instA&amp;#34;, &amp;#34;instB&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;guardrail&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;pii&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;pii&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; teams&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;b-lab&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; action&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;mask&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; actions&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt; { iban&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt; &amp;#34;block&amp;#34;, nir&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt; &amp;#34;block&amp;#34;, phone&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;log&amp;#34;&lt;/span&gt; }
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;guardrail&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;safety&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;llama_guard&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; model&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;llama-guard&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; teams&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;b-lab&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; action&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;block&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; timeout&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;2s&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; on_error&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;block&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="k"&gt;model&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;llama-guard&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; upstream_model&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;meta-llama/Llama-Guard-3-8B&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; pool&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;guard&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; class&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;guard&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; key_file&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;/etc/llmflow/vllm.key&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="n"&gt; upstream &amp;#34;g0&amp;#34; { base_url&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;http://gpu09:8000&amp;#34;&lt;/span&gt; }
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;(Alongside the organisations, teams, the &lt;code&gt;pool &amp;quot;guard&amp;quot;&lt;/code&gt; and the other models.)&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Chaos to play during acceptance.&lt;/strong&gt; Kill a vLLM instance under sustained traffic
+(the routing must fail over); cut Redis (the &lt;em&gt;fail-closed&lt;/em&gt; mode must answer 503,
+not let requests through); preempt a borrowed job in the middle of writing a
+checkpoint (the resume must read the last &lt;em&gt;complete&lt;/em&gt; checkpoint); restart
+&lt;code&gt;slurmdbd&lt;/code&gt; during a mass submission.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="acceptance"&gt;Acceptance tests: prove the guarantee holds&lt;span class="hx:absolute hx:-mt-20" id="acceptance"&gt;&lt;/span&gt;
+&lt;a href="#acceptance" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Every guarantee is proven by a test that &lt;em&gt;could&lt;/em&gt; fail:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;B&amp;rsquo;s guarantee.&lt;/strong&gt; A fills the 32 GPUs (13 in &lt;code&gt;instA&lt;/code&gt;, 19 in &lt;code&gt;borrow&lt;/code&gt;). B
+submits 3 GPUs in &lt;code&gt;instB&lt;/code&gt;. Measure the start delay: it must stay under 36
+minutes, and under 6 minutes if the borrowed jobs are older than 30 minutes.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Negative control.&lt;/strong&gt; The same scenario with the &lt;code&gt;borrow&lt;/code&gt; QOS without
+&lt;code&gt;Preempt&lt;/code&gt;: B must wait. If B starts anyway, test 1 was not measuring
+preemption.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Cap.&lt;/strong&gt; B submits 8 GPUs in &lt;code&gt;instB&lt;/code&gt;: immediate rejection (&lt;code&gt;DenyOnLimit&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Fair-share.&lt;/strong&gt; After a week in which B borrows heavily, &lt;code&gt;sshare -l&lt;/code&gt; must show
+&lt;code&gt;LF_B &amp;lt; 1&lt;/code&gt;, and A&amp;rsquo;s &lt;code&gt;borrow&lt;/code&gt; jobs must go ahead of B&amp;rsquo;s (&lt;code&gt;sprio&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Billing.&lt;/strong&gt; A job of 1 GPU and 64 cores must be billed 4: the &lt;code&gt;billing=&lt;/code&gt; field
+of &lt;code&gt;AllocTRES&lt;/code&gt; in &lt;code&gt;sacct&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Inference.&lt;/strong&gt; Saturate the model with a key of A; check that a key of B still
+gets about 18.75 % of the throughput (with the Enterprise reservation, or the
+relay) or its static limit.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;vLLM priority.&lt;/strong&gt; During saturation, a request of the &lt;code&gt;large-model&lt;/code&gt; group
+(priority 0) must have a time to first token markedly lower than a request of
+&lt;code&gt;large-model-batch&lt;/code&gt; (priority 10).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Inviolable priority.&lt;/strong&gt; Send to &lt;code&gt;large-model-batch&lt;/code&gt; a request with
+&lt;code&gt;extra_body: {&amp;quot;priority&amp;quot;: 0}&lt;/code&gt; and a header &lt;code&gt;X-Vllm-Priority: 0&lt;/code&gt;. It must stay
+processed at priority 10. Control: the same request sent directly to vLLM goes
+ahead.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;B&amp;rsquo;s window.&lt;/strong&gt; One hour before &lt;code&gt;instB_weekly&lt;/code&gt; opens, submit in &lt;code&gt;borrow&lt;/code&gt; a 3 h
+job and a 30 min job. Only the second must start on the reserved server. At
+opening, an 8-GPU job of B must start immediately.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;&lt;strong&gt;Performance.&lt;/strong&gt; Compare throughput (tokens/s) and latency (time to first token,
+p50/p99) of vLLM behind the gateway with those of vLLM direct, at equal load. The
+gateway&amp;rsquo;s overhead must stay negligible next to generation; if it does not,
+increase the number of gateway workers before touching vLLM.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="governance"&gt;Governance&lt;span class="hx:absolute hx:-mt-20" id="governance"&gt;&lt;/span&gt;
+&lt;a href="#governance" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Agreement between institutions&lt;/strong&gt;: shares (26/6), guaranteed delay (36 min),
+size of the inference pool, half-life (14 days), the quarterly compensation
+rule, and the possible reservation of a whole server for B.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Quarterly technical committee&lt;/strong&gt;: real consumption against share, median wait
+times per institution and per QOS, preemption rate, inference saturation.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Change of shares&lt;/strong&gt; (the purchase of a 5th server, say): change the &lt;code&gt;Fairshare&lt;/code&gt;
+and &lt;code&gt;GrpTRES&lt;/code&gt; values. No redeployment is needed.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>Bibliography</title><link>https://go-llmflow.github.io/docs/0.24/guides/fairshare/bibliography/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://go-llmflow.github.io/docs/0.24/guides/fairshare/bibliography/</guid><description>
+&lt;h1 data-hextra-search-id="bibliography"&gt;Bibliography&lt;/h1&gt;&lt;p&gt;Consulted on 23 October 2026. The numbers in square brackets in the guide refer to
+this list.&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;SchedMD, &lt;em&gt;Fair Tree Fairshare Algorithm&lt;/em&gt;. &lt;a href="https://slurm.schedmd.com/fair_tree.html" target="_blank" rel="noopener"&gt;https://slurm.schedmd.com/fair_tree.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;SchedMD, &lt;em&gt;Multifactor Priority Plugin&lt;/em&gt;. &lt;a href="https://slurm.schedmd.com/priority_multifactor.html" target="_blank" rel="noopener"&gt;https://slurm.schedmd.com/priority_multifactor.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;SchedMD, &lt;em&gt;Preemption&lt;/em&gt;. &lt;a href="https://slurm.schedmd.com/preempt.html" target="_blank" rel="noopener"&gt;https://slurm.schedmd.com/preempt.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;SchedMD, &lt;em&gt;Resource Limits&lt;/em&gt;. &lt;a href="https://slurm.schedmd.com/resource_limits.html" target="_blank" rel="noopener"&gt;https://slurm.schedmd.com/resource_limits.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;SchedMD, &lt;em&gt;Generic Resource (GRES) Scheduling&lt;/em&gt;. &lt;a href="https://slurm.schedmd.com/gres.html" target="_blank" rel="noopener"&gt;https://slurm.schedmd.com/gres.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;SchedMD, &lt;em&gt;slurm.conf&lt;/em&gt;. &lt;a href="https://slurm.schedmd.com/slurm.conf.html" target="_blank" rel="noopener"&gt;https://slurm.schedmd.com/slurm.conf.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;SchedMD, &lt;em&gt;cgroup.conf&lt;/em&gt;. &lt;a href="https://slurm.schedmd.com/cgroup.conf.html" target="_blank" rel="noopener"&gt;https://slurm.schedmd.com/cgroup.conf.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;SchedMD, &lt;em&gt;sacctmgr&lt;/em&gt;. &lt;a href="https://slurm.schedmd.com/sacctmgr.html" target="_blank" rel="noopener"&gt;https://slurm.schedmd.com/sacctmgr.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;vLLM, &lt;em&gt;Engine Arguments&lt;/em&gt;. &lt;a href="https://docs.vllm.ai/en/latest/configuration/engine_args/" target="_blank" rel="noopener"&gt;https://docs.vllm.ai/en/latest/configuration/engine_args/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;vLLM, &lt;em&gt;OpenAI-Compatible Server&lt;/em&gt;. &lt;a href="https://docs.vllm.ai/en/latest/serving/online_serving/openai_compatible_server/" target="_blank" rel="noopener"&gt;https://docs.vllm.ai/en/latest/serving/online_serving/openai_compatible_server/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;LiteLLM, &lt;em&gt;Budgets, Rate Limits&lt;/em&gt;. &lt;a href="https://docs.litellm.ai/docs/proxy/users" target="_blank" rel="noopener"&gt;https://docs.litellm.ai/docs/proxy/users&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;NVIDIA, &lt;em&gt;HGX Platform&lt;/em&gt; (HGX B300 / B200 specification table). &lt;a href="https://www.nvidia.com/en-us/data-center/hgx/" target="_blank" rel="noopener"&gt;https://www.nvidia.com/en-us/data-center/hgx/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;LiteLLM, &lt;em&gt;Router &amp;ndash; Load Balancing&lt;/em&gt;. &lt;a href="https://docs.litellm.ai/docs/routing" target="_blank" rel="noopener"&gt;https://docs.litellm.ai/docs/routing&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;LiteLLM, &lt;em&gt;Dynamic TPM/RPM Allocation&lt;/em&gt;. &lt;a href="https://docs.litellm.ai/docs/proxy/dynamic_rate_limit" target="_blank" rel="noopener"&gt;https://docs.litellm.ai/docs/proxy/dynamic_rate_limit&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;LiteLLM, &lt;em&gt;Request Prioritization&lt;/em&gt;. &lt;a href="https://docs.litellm.ai/docs/scheduler" target="_blank" rel="noopener"&gt;https://docs.litellm.ai/docs/scheduler&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Continue, &lt;em&gt;OpenAI provider&lt;/em&gt;. &lt;a href="https://docs.continue.dev/customize/model-providers/top-level/openai" target="_blank" rel="noopener"&gt;https://docs.continue.dev/customize/model-providers/top-level/openai&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Continue, &lt;em&gt;config.yaml Reference&lt;/em&gt;. &lt;a href="https://docs.continue.dev/reference" target="_blank" rel="noopener"&gt;https://docs.continue.dev/reference&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Microsoft, &lt;em&gt;Remote Development using SSH&lt;/em&gt;. &lt;a href="https://code.visualstudio.com/docs/remote/ssh" target="_blank" rel="noopener"&gt;https://code.visualstudio.com/docs/remote/ssh&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;NVIDIA, &lt;em&gt;Inside NVIDIA Blackwell Ultra: The Chip Powering the AI Factory Era&lt;/em&gt;. &lt;a href="https://developer.nvidia.com/blog/inside-nvidia-blackwell-ultra-the-chip-powering-the-ai-factory-era/" target="_blank" rel="noopener"&gt;https://developer.nvidia.com/blog/inside-nvidia-blackwell-ultra-the-chip-powering-the-ai-factory-era/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;NVIDIA, &lt;em&gt;Introduction to NVIDIA DGX B300 System&lt;/em&gt;. &lt;a href="https://docs.nvidia.com/dgx/dgxb300-user-guide/introduction-to-dgxb300.html" target="_blank" rel="noopener"&gt;https://docs.nvidia.com/dgx/dgxb300-user-guide/introduction-to-dgxb300.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;SchedMD, &lt;em&gt;Resource Reservation Guide&lt;/em&gt;. &lt;a href="https://slurm.schedmd.com/reservations.html" target="_blank" rel="noopener"&gt;https://slurm.schedmd.com/reservations.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;LiteLLM, &lt;em&gt;Custom Pricing&lt;/em&gt;. &lt;a href="https://docs.litellm.ai/docs/proxy/custom_pricing" target="_blank" rel="noopener"&gt;https://docs.litellm.ai/docs/proxy/custom_pricing&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;LiteLLM, &lt;em&gt;Forward Client Headers to LLM API&lt;/em&gt;. &lt;a href="https://docs.litellm.ai/docs/proxy/forward_client_headers" target="_blank" rel="noopener"&gt;https://docs.litellm.ai/docs/proxy/forward_client_headers&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;vLLM, &lt;em&gt;Benchmark CLI&lt;/em&gt;. &lt;a href="https://docs.vllm.ai/en/latest/benchmarking/cli/" target="_blank" rel="noopener"&gt;https://docs.vllm.ai/en/latest/benchmarking/cli/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;vLLM, scheduler source code: &lt;code&gt;vllm/v1/core/sched/scheduler.py&lt;/code&gt; and &lt;code&gt;request_queue.py&lt;/code&gt;. &lt;a href="https://github.com/vllm-project/vllm/tree/main/vllm/v1/core/sched" target="_blank" rel="noopener"&gt;https://github.com/vllm-project/vllm/tree/main/vllm/v1/core/sched&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Bifrost. &lt;a href="https://github.com/maximhq/bifrost" target="_blank" rel="noopener"&gt;https://github.com/maximhq/bifrost&lt;/a&gt;, &lt;a href="https://docs.getbifrost.ai/features/governance/virtual-keys" target="_blank" rel="noopener"&gt;https://docs.getbifrost.ai/features/governance/virtual-keys&lt;/a&gt;, &lt;a href="https://docs.getbifrost.ai/enterprise/overview" target="_blank" rel="noopener"&gt;https://docs.getbifrost.ai/enterprise/overview&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Apache APISIX, &lt;em&gt;ai-rate-limiting&lt;/em&gt;. &lt;a href="https://apisix.apache.org/docs/apisix/plugins/ai-rate-limiting/" target="_blank" rel="noopener"&gt;https://apisix.apache.org/docs/apisix/plugins/ai-rate-limiting/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Envoy AI Gateway, &lt;em&gt;Usage-based rate limiting&lt;/em&gt;. &lt;a href="https://aigateway.envoyproxy.io/" target="_blank" rel="noopener"&gt;https://aigateway.envoyproxy.io/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Kubernetes SIGs, &lt;em&gt;Gateway API Inference Extension&lt;/em&gt;. &lt;a href="https://github.com/kubernetes-sigs/gateway-api-inference-extension" target="_blank" rel="noopener"&gt;https://github.com/kubernetes-sigs/gateway-api-inference-extension&lt;/a&gt;; llm-d. &lt;a href="https://github.com/llm-d/llm-d-router" target="_blank" rel="noopener"&gt;https://github.com/llm-d/llm-d-router&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;vLLM, &lt;em&gt;production-stack&lt;/em&gt;. &lt;a href="https://github.com/vllm-project/production-stack" target="_blank" rel="noopener"&gt;https://github.com/vllm-project/production-stack&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Portkey, &lt;em&gt;AI Gateway&lt;/em&gt;. &lt;a href="https://github.com/Portkey-AI/gateway" target="_blank" rel="noopener"&gt;https://github.com/Portkey-AI/gateway&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Kong, &lt;em&gt;AI Proxy Advanced&lt;/em&gt;, &lt;em&gt;AI Rate Limiting Advanced&lt;/em&gt;. &lt;a href="https://developer.konghq.com/plugins/ai-proxy-advanced/" target="_blank" rel="noopener"&gt;https://developer.konghq.com/plugins/ai-proxy-advanced/&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;</description></item></channel></rss>
