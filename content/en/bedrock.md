@@ -52,7 +52,7 @@ model "claude-sonnet-bedrock" {
 
 This configuration, with `pii` and `hide_secrets` guardrails, a pool and organisations around it
 (and the credential files present, with `session_token_file` omitted), passes
-`llmflow-gateway check-config` v0.23.2, which also loads every credential and prints no value.
+`llmflow-gateway check-config` v0.24.0, which also loads every credential and prints no value.
 The README's own example uses `vault:` references for etabA and needs a `vault` block.
 
 - **`region`.** The endpoint is derived from it and is always https. `endpoint_override` is for a

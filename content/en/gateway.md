@@ -13,7 +13,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.23.2.** The versions so far:
+**The current release is v0.24.0.** The versions so far:
 
 | Version | Content |
 | --- | --- |
@@ -53,11 +53,12 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.23.0](https://github.com/go-llmflow/gateway/releases/tag/v0.23.0) | **Amazon Bedrock as an opt-in provider** (#89, #121) for Claude models, under hard budgets: an incomplete stream is billed at W. Retention is not "none" by default. See [Amazon Bedrock]({{< relref "bedrock.md" >}}) |
 | [v0.23.1](https://github.com/go-llmflow/gateway/releases/tag/v0.23.1) | moves to go-llmflow/aws v0.1.1: Bedrock signing uses a cached derived key and is level with the AWS SDK; behaviour unchanged |
 | [v0.23.2](https://github.com/go-llmflow/gateway/releases/tag/v0.23.2) | the decision PDF is typeset offline (`html2pdf.Offline`, go-pdfkit/html2pdf v0.4.0), so a name can no longer make the gateway send a request; see [Decision reports]({{< relref "decision-reports.md" >}}#pdf-network) |
+| [v0.24.0](https://github.com/go-llmflow/gateway/releases/tag/v0.24.0) | **per-pool shares** (#125): `pool { shares, borrow }`, 403 for non-shareholders with `borrow = "shareholders"`, reports with a row per pool. See [Several machines, several contributors]({{< relref "shared-purchase.md" >}}) |
 
 **Which tag to take.** v0.13.1 was published **after** v0.14.0, and on a commit that
 already contains the HA code of v0.14.0 (it descends from it); v0.14.1 is the very same
 commit. A tag number going down in time is therefore not a downgrade here. Take
-**v0.14.1 or later** (today v0.23.2), not v0.13.1, so that your version number says
+**v0.14.1 or later** (today v0.24.0), not v0.13.1, so that your version number says
 what the binary holds. The HA code does nothing without an `ha` block.
 
 ```sh
@@ -207,7 +208,7 @@ webhook and/or by e-mail through an SMTP relay.
 The configuration is written in
 [HCL2 native syntax](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md);
 the repository's `examples/gateway.hcl` is parsed by its test suite, so it stays
-valid. This extract was run through `llmflow-gateway check-config` v0.23.2 (with
+valid. This extract was run through `llmflow-gateway check-config` v0.24.0 (with
 the key files present):
 
 ```hcl
@@ -413,7 +414,7 @@ capability and never forwards a client's `Authorization` or `x-api-key`. This is
 legal advice: check your institution's contracts with your DPO.
 
 This block, from the gateway's `examples/anthropic.hcl` with this page's names, passes
-`llmflow-gateway check-config` v0.23.2 (with the key files present, and the
+`llmflow-gateway check-config` v0.24.0 (with the key files present, and the
 organisations, the `b300` pool and the local `llama-3.3-70b` model of that example
 around it):
 
@@ -563,7 +564,7 @@ stored. A replica that never comes back is released with
 `POST /admin/budgets/release-replica {"replica": "<name>"}`, audited, by an org admin (that
 organisation's budgets) or a proxy admin (see [below](#budget-mid-period)).
 
-**Configuration.** The fragments below pass `llmflow-gateway check-config` v0.23.2 (with the
+**Configuration.** The fragments below pass `llmflow-gateway check-config` v0.24.0 (with the
 key files present, and organisations, pools and keys around them):
 
 ```hcl
@@ -722,7 +723,7 @@ org "etabA" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.23.2 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.24.0 (with the key files present,
 and a pool and a model around it).
 
 - **What the header may name.** A project **name**, looked up in the key's own team
@@ -758,7 +759,7 @@ true`. Spans carry metadata only (organisation, team, key id, model, pool, prior
 status, token counts, guardrail verdicts), **never a prompt or an answer**.
 
 This block, with the fallbacks and audio settings above, passes
-`llmflow-gateway check-config` v0.23.2 (with the key files present, and
+`llmflow-gateway check-config` v0.24.0 (with the key files present, and
 organisations, pools and models around it):
 
 ```hcl
@@ -814,7 +815,7 @@ ha {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.23.2 (with the key, DSN and secret
+This block passes `llmflow-gateway check-config` v0.24.0 (with the key, DSN and secret
 files present, and organisations, a pool and a model around it). `check-config` also
 checks the block: the postgres store, an advertised IP literal inside `peer_networks`,
 `heartbeat` at most a third of `lease_ttl`, `forward_timeout` at most a heartbeat, and a
@@ -839,7 +840,7 @@ This form is **tested live**: bench v0.6.0's
 against PostgreSQL 18.6 with two gateway v0.16.1 processes configured from PEM files
 (ECDSA and Ed25519 leaves, SAN `llmflow-ha`, key files at mode 0600, which the loader
 requires): 8 of 8 admissions sent to the non-owner were forwarded to the owner over mTLS.
-`check-config` v0.23.2 also accepts such files. The
+`check-config` v0.24.0 also accepts such files. The
 repository's README also shows the certificate and key as `vault:` references, such as
 `vault:secret/llmflow/ha#cert`; the loader accepts both a file path and a `vault:`
 reference, and that form needs a `vault` block which is not shown here and was not run.
@@ -962,7 +963,7 @@ model "llama" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.23.2 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.24.0 (with the key files present,
 and organisations around it).
 
 - **Convention.** A job serves model `M` on port `P` when its name (or else its comment)
@@ -1094,7 +1095,7 @@ check use `llmflow-gateway audit verify` with a public key kept elsewhere (see
 server in front of the tool servers of the configuration. It speaks the Streamable
 HTTP binding of revision **2026-07-28** and, for older clients, the initialize
 handshake of **2025-11-25** (and 2025-06-18, 2025-03-26). A client authenticates
-with its virtual key. This block passes `llmflow-gateway check-config` v0.23.2
+with its virtual key. This block passes `llmflow-gateway check-config` v0.24.0
 (with the key files present, and an `sso` block, organisations, a pool and a model
 around it):
 
@@ -1141,6 +1142,16 @@ measured externally. Each **organisation** owns an integer reservation, shared b
 all its teams and projects, obtained by apportioning `C` over the shares with the
 largest-remainder (Hamilton) method, so reservations never sum to more than `C`
 (C = 256 gives A 208 and B 48).
+
+Since **v0.24.0** a pool may carry shares of its own, so that two machines bought by different
+institutions are not apportioned alike: `pool "name" { capacity = 64  shares = { etabA = 0.5, etabC = 0.5 }
+borrow = "shareholders" }`. A pool without `shares` uses the organisations' `share`; an organisation
+absent from a pool's `shares` has 0 slots there; the slots are apportioned over `C` by the same
+largest remainder; and `borrow = "shareholders"` answers a non-shareholder **403** (`borrow = "all"`,
+the default, lends idle slots to anyone). The reports then carry a row per partner and pool, and
+under `ha` a replica refuses to follow a pool owner of another version (503) until all agree. The
+whole story, with a worked example, is on
+[Several machines, several contributors]({{< relref "shared-purchase.md" >}}).
 
 For every request:
 
@@ -1330,7 +1341,7 @@ PostgreSQL. The estimate undercounts tool-call and reasoning tokens.
 
 ## Limitations {#limitations}
 
-Open defects of v0.23.2, as the repository lists them:
+Open defects of v0.24.0, as the repository lists them:
 
 1. **Rate limits and the key cache are per process.** Since v0.14.0 the fair-share
    state is shared between replicas **with an `ha` block** (see
