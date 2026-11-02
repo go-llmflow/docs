@@ -13,7 +13,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 
 ## Status {#status}
 
-**The current release is v0.25.0.** The versions so far:
+**The current release is v0.25.1.** The versions so far:
 
 | Version | Content |
 | --- | --- |
@@ -56,11 +56,12 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.24.0](https://github.com/go-llmflow/gateway/releases/tag/v0.24.0) | **per-pool shares** (#125): `pool { shares, borrow }`, 403 for non-shareholders with `borrow = "shareholders"`, reports with a row per pool. See [Several machines, several contributors]({{< relref "shared-purchase.md" >}}) |
 | [v0.24.1](https://github.com/go-llmflow/gateway/releases/tag/v0.24.1) | a JSON `null` body no longer panics in the Bedrock request builder (#126, found by fuzzing; latent, a client could not reach it); the README's Bedrock retention paragraph quotes both AWS pages (#127). No other behaviour change |
 | [v0.25.0](https://github.com/go-llmflow/gateway/releases/tag/v0.25.0) | **Bedrock Converse** (#128): Mistral, Llama and Nova at `/v1/chat/completions`, `api = "invoke" \| "converse"`, tools not mapped yet. **Billing fix for every external provider:** cache writes of unknown 5-minute/1-hour split are charged at the higher write price (before, as 5-minute), so settled costs can rise. See [Amazon Bedrock]({{< relref "bedrock.md" >}}#converse) |
+| [v0.25.1](https://github.com/go-llmflow/gateway/releases/tag/v0.25.1) | performance measured from v0.6.0 to v0.24.0 (+5 us, then flat; see [Overhead]({{< relref "gateway.md" >}}#overhead-versions)); the per-request pool check takes 11 ns instead of 60 ns. No behaviour change |
 
 **Which tag to take.** v0.13.1 was published **after** v0.14.0, and on a commit that
 already contains the HA code of v0.14.0 (it descends from it); v0.14.1 is the very same
 commit. A tag number going down in time is therefore not a downgrade here. Take
-**v0.14.1 or later** (today v0.25.0), not v0.13.1, so that your version number says
+**v0.14.1 or later** (today v0.25.1), not v0.13.1, so that your version number says
 what the binary holds. The HA code does nothing without an `ha` block.
 
 ```sh
@@ -210,7 +211,7 @@ webhook and/or by e-mail through an SMTP relay.
 The configuration is written in
 [HCL2 native syntax](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md);
 the repository's `examples/gateway.hcl` is parsed by its test suite, so it stays
-valid. This extract was run through `llmflow-gateway check-config` v0.25.0 (with
+valid. This extract was run through `llmflow-gateway check-config` v0.25.1 (with
 the key files present):
 
 ```hcl
@@ -416,7 +417,7 @@ capability and never forwards a client's `Authorization` or `x-api-key`. This is
 legal advice: check your institution's contracts with your DPO.
 
 This block, from the gateway's `examples/anthropic.hcl` with this page's names, passes
-`llmflow-gateway check-config` v0.25.0 (with the key files present, and the
+`llmflow-gateway check-config` v0.25.1 (with the key files present, and the
 organisations, the `b300` pool and the local `llama-3.3-70b` model of that example
 around it):
 
@@ -574,7 +575,7 @@ stored. A replica that never comes back is released with
 `POST /admin/budgets/release-replica {"replica": "<name>"}`, audited, by an org admin (that
 organisation's budgets) or a proxy admin (see [below](#budget-mid-period)).
 
-**Configuration.** The fragments below pass `llmflow-gateway check-config` v0.25.0 (with the
+**Configuration.** The fragments below pass `llmflow-gateway check-config` v0.25.1 (with the
 key files present, and organisations, pools and keys around them):
 
 ```hcl
@@ -733,7 +734,7 @@ org "etabA" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.25.0 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.25.1 (with the key files present,
 and a pool and a model around it).
 
 - **What the header may name.** A project **name**, looked up in the key's own team
@@ -769,7 +770,7 @@ true`. Spans carry metadata only (organisation, team, key id, model, pool, prior
 status, token counts, guardrail verdicts), **never a prompt or an answer**.
 
 This block, with the fallbacks and audio settings above, passes
-`llmflow-gateway check-config` v0.25.0 (with the key files present, and
+`llmflow-gateway check-config` v0.25.1 (with the key files present, and
 organisations, pools and models around it):
 
 ```hcl
@@ -825,7 +826,7 @@ ha {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.25.0 (with the key, DSN and secret
+This block passes `llmflow-gateway check-config` v0.25.1 (with the key, DSN and secret
 files present, and organisations, a pool and a model around it). `check-config` also
 checks the block: the postgres store, an advertised IP literal inside `peer_networks`,
 `heartbeat` at most a third of `lease_ttl`, `forward_timeout` at most a heartbeat, and a
@@ -850,7 +851,7 @@ This form is **tested live**: bench v0.6.0's
 against PostgreSQL 18.6 with two gateway v0.16.1 processes configured from PEM files
 (ECDSA and Ed25519 leaves, SAN `llmflow-ha`, key files at mode 0600, which the loader
 requires): 8 of 8 admissions sent to the non-owner were forwarded to the owner over mTLS.
-`check-config` v0.25.0 also accepts such files. The
+`check-config` v0.25.1 also accepts such files. The
 repository's README also shows the certificate and key as `vault:` references, such as
 `vault:secret/llmflow/ha#cert`; the loader accepts both a file path and a `vault:`
 reference, and that form needs a `vault` block which is not shown here and was not run.
@@ -973,7 +974,7 @@ model "llama" {
 }
 ```
 
-This block passes `llmflow-gateway check-config` v0.25.0 (with the key files present,
+This block passes `llmflow-gateway check-config` v0.25.1 (with the key files present,
 and organisations around it).
 
 - **Convention.** A job serves model `M` on port `P` when its name (or else its comment)
@@ -1105,7 +1106,7 @@ check use `llmflow-gateway audit verify` with a public key kept elsewhere (see
 server in front of the tool servers of the configuration. It speaks the Streamable
 HTTP binding of revision **2026-07-28** and, for older clients, the initialize
 handshake of **2025-11-25** (and 2025-06-18, 2025-03-26). A client authenticates
-with its virtual key. This block passes `llmflow-gateway check-config` v0.25.0
+with its virtual key. This block passes `llmflow-gateway check-config` v0.25.1
 (with the key files present, and an `sso` block, organisations, a pool and a model
 around it):
 
@@ -1225,6 +1226,32 @@ median varied from 4.84 to 4.93 ms for LiteLLM and from 115 to 120 us for llmflo
 
 **What it does not measure.** No streaming, no concurrency, and no database write:
 the gateway ran with its memory store. These are to be measured on the cluster.
+
+### Overhead from v0.6.0 to v0.24.0 {#overhead-versions}
+
+Measured on **2026-11-01** with go-llmflow/bench `gwbench`, from the README's Benchmark section
+(v0.25.1). **Method.** Six gateways (clean installs of each tag, the same memory-store
+configuration, one model, no budget) sit in front of one `fakevllm`, interleaved round by round in
+a random order and paired against a direct call of the same round. 6 runs of 2 000 rounds were kept
+at a 1-minute load of 3.39 to 3.91 (2 runs whose load ended above 4 were discarded); Apple M4 Max.
+
+| Added latency, paired per round | p50 | p90 | p99 |
+| --- | --- | --- | --- |
+| v0.6.0 | 57.4 us | 68.1 us | 160.6 us |
+| v0.12.0 | 60.0 us | 70.3 us | 166.5 us |
+| v0.17.1 | 62.1 us | 72.5 us | 162.3 us |
+| v0.19.0 | 62.3 us | 72.8 us | 163.2 us |
+| v0.22.2 | 62.9 us | 73.7 us | 167.3 us |
+| v0.24.0 | 62.7 us | 73.3 us | 164.7 us |
+
+**Conclusion.** The p50 grew by about 5 us (+9 %) from v0.6.0 to v0.17.1, in two steps of about
+2.5 us and 2.2 us, then stayed flat within 0.6 us through v0.24.0. **No single cause was found**:
+allocations per request do not follow the latency, and a CPU profile of `BenchmarkOverhead` is 96 %
+system calls, the gateway's own code about 1.5 % of the samples. The overhead is still about
+**60 us**, against LiteLLM's **4.86 ms** measured on 2026-10-23 (above). The figures are absolute
+values on this machine, not comparable with the 2026-10-23 harness (another prompt size and machine
+state). v0.25.1 also made the per-request pool check cheaper (11 ns instead of 60 ns per call); that
+is not the cause of the 5 us.
 
 ## Security {#security}
 
@@ -1351,7 +1378,7 @@ PostgreSQL. The estimate undercounts tool-call and reasoning tokens.
 
 ## Limitations {#limitations}
 
-Open defects of v0.25.0, as the repository lists them:
+Open defects of v0.25.1, as the repository lists them:
 
 1. **Rate limits and the key cache are per process.** Since v0.14.0 the fair-share
    state is shared between replicas **with an `ha` block** (see
