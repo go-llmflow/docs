@@ -68,7 +68,7 @@ collected, and their rounds stay paired when they are merged.
 
 The load is read from `/proc/loadavg` on Linux and from `sysctl vm.loadavg` on
 macOS. Elsewhere the tool cannot read it and refuses to measure. Since bench
-v0.7.1 that reading is the public package
+v0.9.1 that reading is the public package
 `github.com/go-fleettools/fleettools/loadavg`, shared with fleettools' `abbench`.
 
 ### The control {#control}
