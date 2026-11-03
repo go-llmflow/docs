@@ -17,7 +17,8 @@ is given.
 
 Since **v0.23.1** the gateway runs on go-llmflow/aws v0.1.1: **signing uses a cached derived
 key** (keyed by the day, region, service and a SHA-256 of the secret, bounded, no secret stored),
-so Bedrock signing is level with the AWS SDK's; behaviour is unchanged.
+so Bedrock signing is level with the AWS SDK's; behaviour is unchanged. **Since v0.25.2** (go-llmflow/aws v0.1.2) signing is **faster than the AWS SDK's**: see the
+[measured table]({{< relref "libraries/aws.md" >}}#performance).
 
 ## Configuration {#config}
 
