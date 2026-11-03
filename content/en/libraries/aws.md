@@ -5,14 +5,14 @@ weight: 10
 
 # aws {#aws}
 
-[`github.com/go-llmflow/aws`](https://github.com/go-llmflow/aws) **v0.1.1** is AWS Signature
+[`github.com/go-llmflow/aws`](https://github.com/go-llmflow/aws) **v0.1.2** is AWS Signature
 Version 4 request signing and AWS event-stream decoding, in pure Go, **standard library only**:
 no aws-sdk-go, no cgo, no network, no files. It has two generic packages and no service-specific
-code. This page is written from the repository's README and the v0.1.0 and v0.1.1 release notes (v0.1.1 has no API
+code. This page is written from the repository's README and the v0.1.0 to v0.1.2 release notes (v0.1.1 and v0.1.2 have no API
 change); none of it was run here.
 
 ```sh
-go get github.com/go-llmflow/aws@v0.1.1
+go get github.com/go-llmflow/aws@v0.1.2
 ```
 
 ## What it is for
@@ -112,21 +112,29 @@ the test suite pins that it is rejected as printed and decodes once four bytes a
 Benchmarks against aws-sdk-go-v2 are in a separate `_bench/` module, so the library has no
 dependency; `TestSameSignature` and `TestSameWire` check that both sides do the same work.
 
-**These figures are indicative only.** The rule is to measure when the machine's one-minute load
-average is at most 4; these runs (2026-11-01, Apple M4 Max, one core, `-count 6` or `8`) started at
-load 3.6 to 4.3 and **ended at 4.4 to 6.8**, so they will be replaced by an idle run. They are the
-README's, not re-run here.
+**Measured 2026-11-03** (README at v0.1.2) on an Apple M4 Max, one core (`GOMAXPROCS=1`), with
+go-fleettools `abbench`. Ours and the SDK run **alternately**, round by round, from one test
+binary. Every round waits for a 1-minute load of 4 or less and is discarded as a pair if the load
+ends above 4. Each series has **10 kept rounds**; the third column is `benchstat`'s difference
+(all p <= 0.002 unless stated).
 
 | Benchmark | go-llmflow/aws | aws-sdk-go-v2 | |
 | --- | --- | --- | --- |
-| decode 1000 messages of 120 B | 283 us, 6.0 k allocs | 815 us, 40 k allocs | 2.9x faster |
-| decode 1000 messages of 8 KiB | 1.27 ms | 2.87 ms | 2.3x faster |
-| decode 1000 messages of 256 KiB | 42.0 ms | 47.6 ms | 1.13x faster |
-| encode one message | 108 ns, 1 alloc | 395 ns, 19 allocs | 3.7x faster |
-| sign a Bedrock request | 2.99 us, 49 allocs | 2.97 us, 51 allocs | equal within +/-2 % |
+| decode 1000 messages of 120 B | 287.8 us, 6.0 k allocs | 811.6 us, 40.0 k allocs | 2.8x faster |
+| decode 1000 messages of 8 KiB | 1.265 ms, 6.0 k allocs | 2.881 ms, 44.0 k allocs | 2.3x faster |
+| decode 1000 messages of 256 KiB | 42.87 ms, 9.0 k allocs | 47.05 ms, 49.0 k allocs | 1.10x faster |
+| sign a Bedrock request | 2.940 us, 48 allocs | 3.001 us, 51 allocs | 2.0 % faster |
 
-Signing was 22 % slower than the SDK in the first run (3.57 us against 2.94 us), because the SDK
-derives the signing key once per day and region/service and v0.1.0 derived it on every request.
-**v0.1.1 caches derived keys** and closes the gap. The cache is stricter than the SDK's: an entry
-is keyed by the day, the region, the service **and a SHA-256 of the secret** (two credentials that
-share an access key ID never share a key), it is bounded to 256 entries, and it holds no secret.
+Signing took two fixes to stop being slower than the SDK:
+
+1. The SDK derives the signing key once per day and region/service, and v0.1.0 derived it on every
+   request (22 % slower in the first, indicative run of 2026-11-01); **v0.1.1 added a cache** of
+   derived keys.
+2. The cache key of v0.1.1 was a SHA-256 of the secret, one block per request, which left signing
+   1.7 % slower (2.916 us against 2.865 us, p = 0.029); **v0.1.2 keys it with `hash/maphash`**
+   (a seed drawn once per process, the day as an integer). It is still stricter than the SDK's:
+   two credentials that share an access key ID never share an entry, it is bounded to 256 entries,
+   and it holds no secret.
+
+Encoding (one message, 3.7x faster, 1 allocation against 19) was only measured in the indicative
+run of 2026-11-01, so it is not in the table.
