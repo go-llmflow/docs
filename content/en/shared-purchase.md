@@ -242,7 +242,9 @@ then within an organisation pro rata to active energy, in integer minor units, s
 to the configured amount to the cent. A report over part of a month gets the part covered **by time**
 (UTC), and the parts of a month add up exactly. The report has two new columns, `fixed_cost` and
 `total_cost` (`fluids_cost + fixed_cost`, rounded to `currency_decimals`, half to even, once per row);
-the existing columns are unchanged.
+the existing columns are unchanged. The chargeback (`GET /admin/chargeback`, and the decision report's
+chargeback table) carries a `fixed_cost` column after `fluids_cost` (in the CSV the columns after it move
+by one), and a month's chargeback total is the fluids report's `total_cost` for that month.
 
 ## Upgrading under `ha` {#ha}
 
