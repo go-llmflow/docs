@@ -17,6 +17,7 @@ is the reference.
 | a person calls the **inference API** with an OpenID Connect access token | `jwt` | [go-authn/oidc](https://github.com/go-authn/oidc) |
 | an administrator **logs in** with a browser | `sso` | [go-authn/rp](https://github.com/go-authn/rp) |
 | the identity provider is a **SAML federation** (RENATER, eduGAIN) | `sso` and `jwt`, pointed at the bridge | [go-authn/bridge](https://github.com/go-authn/bridge) |
+| **several** identity providers, or a federation proxy filtered to some institutions | `sso { provider }`, `jwt "<name>"`, `accept` | the gateway ([below](#multi-idp)) |
 | the identity provider **provisions** users and groups | `scim` | [go-authn/scim](https://github.com/go-authn/scim) |
 | a client's **key is rotated** on a schedule | `key_rotation`, `vault` | the gateway |
 
@@ -128,6 +129,91 @@ instead of holding an admin token (go-authn/rp: authorization code with PKCE,
   or come from another `Origin` than the `redirect_url`'s. Bearer-token requests
   are unaffected.
 - Sessions live in the memory of one replica: behind several, use sticky sessions.
+
+## Several identity providers, and federations {#multi-idp}
+
+Since **v0.27.0**, when there is no federation, each institution can keep its own
+OpenID provider: the `sso` block takes one `provider "<name>"` block per provider,
+and the `jwt` block becomes one `jwt "<name>"` block per issuer. Behind a federation
+proxy (eduGAIN through MyAccessID, eduTEAMS, Renater, a Keycloak broker), an
+`accept` list keeps the login to the institutions you serve. The single-issuer
+forms above stay valid. This configuration was run through `check-config` v0.27.0
+(it is `examples/federation.hcl` in the gateway repository):
+
+```hcl
+sso {
+  redirect_url = "https://llm.example.org/admin/callback"
+
+  provider "univ-a" {
+    issuer             = "https://sso.univ-a.example"
+    client_id          = "llmflow-admin"
+    client_secret_file = "vault:secret/llmflow#sso-univ-a"
+    orgs               = ["univ-a"]
+    role {
+      value = "llm-admins"
+      role  = "org_admin"
+      org   = "univ-a"
+    }
+  }
+
+  provider "partners" {
+    issuer    = "https://proxy.federation.example"
+    client_id = "llmflow-admin"
+    orgs      = ["partners"]
+    accept {
+      claim  = "schac_home_organization"
+      values = ["univ-c.example", "univ-d.example"]
+    }
+    role {
+      claim = "schac_home_organization"
+      value = "univ-c.example"
+      role  = "member"
+      team  = "lab-partners"
+    }
+  }
+}
+
+jwt "partners" {
+  issuer   = "https://proxy.federation.example"
+  audience = "llmflow-api"
+  orgs     = ["partners"]
+  accept {
+    claim  = "schac_home_organization"
+    values = ["univ-c.example", "univ-d.example"]
+  }
+  map {
+    value = "llm-users"
+    team  = "lab-partners"
+  }
+}
+```
+
+- **A callback per provider**, `/admin/callback/<name>`: register that redirect
+  URI at that provider (RFC 9700 §4.4.2.2). `/admin/login` lists the providers on a
+  page without JavaScript; `/admin/login/<name>` starts a login. A login belongs to
+  the provider it was sent to: another provider's answer, or an `iss` response
+  parameter that is not the provider's issuer (RFC 9207), is refused, and the ID
+  token's `iss` is checked against that provider alone.
+- **`orgs`** says what a provider may vouch for. A role on another organisation is
+  refused (`check-config` rejects the file; at run time it is refused and logged),
+  and a proxy-wide role needs `allow_proxy_roles = true`. An institution's provider
+  never makes anybody administrator of another institution.
+- **An identity is (provider, subject)**, because `sub` is unique only within its
+  issuer (OpenID Connect Core §2). A stored user is linked to the provider and
+  subject of the first login; the same name arriving through another provider, or
+  with another subject, is refused. Users stored before v0.27.0 need no migration:
+  the first provider adopts them.
+- **`accept { claim, values }`**: all the `accept` blocks must hold, and any value of a
+  multi-valued claim may match. The person is told the institution value that was
+  refused and nothing else. `schac_home_organization` (a domain name, `caseIgnoreMatch`
+  in the SCHAC 1.6.0 schema), `eduperson_scoped_affiliation` and
+  `voperson_external_affiliation` are compared without case; every other claim exactly.
+  The claim must be in the ID token (the access token for `jwt`): MyAccessID's
+  documentation lists `schac_home_organization` for userinfo and introspection, not
+  for the ID token, and the gateway does not call userinfo.
+- **Inference tokens** are routed to their `jwt` block by `iss`; an unknown `iss` is a
+  401 and no other issuer's keys are tried. Each block has its own audience, JWKS,
+  maps, `orgs` and `accept`.
 
 ## SAML federations: RENATER, eduGAIN {#saml}
 
