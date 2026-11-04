@@ -71,6 +71,10 @@ The rules, from the gateway README at v0.24.0:
   pool is skipped as a fallback target for them. It is 403 and not 429 because retrying cannot help:
   the organisation is not entitled to the machine, whatever its load.
 
+- **`borrow = "spare"`** (since v0.26.0): owners are unchanged, but an organisation that holds no
+  share of the pool is served **only while the pool has room**. See
+  [Lending to a third party](#ilaas).
+
 In the example, etabB paid nothing for the machine and is refused with `shareholders`; with `all` it
 could use idle slots. etabD has a share of 0 on the B300 servers (it is served there only as a
 borrower) and 20 % of the RTX machine.
@@ -161,6 +165,86 @@ an NVIDIA DCGM exporter. Two cautions for this machine:
 - **One DCGM exporter serves one pool.** A node belongs to one pool: an exporter serving models of
   two pools, one of which has its own shares, is refused by `check-config`. The idle energy of an
   interval is allocated by the shares of the pool the node belongs to.
+
+## Lending to a third party (ILaaS) and billing its fluids {#ilaas}
+
+Since **gateway v0.26.0**, a multi-institution pool (the B300 servers, say) can lend its capacity to a
+third party that holds no share of it, **only while the owners' total use is below 100 %**, and bill
+that party's electricity and cooling. The example is `examples/b300-ilaas.hcl`.
+
+```hcl
+org "tiers" {
+  share = 0 # the third party
+  team "tiers-prod" {}
+}
+
+pool "b300" {
+  capacity = 256
+  borrow   = "spare" # owners as with "all"; a non-shareholder only while there is room
+}
+
+fluids {
+  pue           = 1.3
+  price_per_kwh = 0.18
+  currency      = "EUR"
+  idle_energy   = "by_usage" # fixed costs shared by all clients, the third party included
+  fixed_cost "racks-b300" {
+    monthly = 1800
+    pool    = "b300" # omit for the whole platform
+  }
+}
+```
+
+### Admission {#ilaas-admission}
+
+A non-shareholder of the pool (its share of **this** pool is 0; for a pool without `shares`, the
+organisation's own share) is admitted only if fewer than C requests are in flight, decided and taken
+atomically, and vLLM does not report its queues as saturated. Otherwise it gets **HTTP 429**
+`rate_limit_exceeded` with `Retry-After: 5` (a fixed five seconds), a message naming the pool and
+saying that the organisation holds no share and is served from spare capacity only, and nothing about
+the owners' use. It is 429, not 403, because retrying later can succeed. The same applies when a
+request falls back into such a pool.
+
+Admitted, it always takes the **last priority band**: shareholders that borrow stop one band earlier,
+so a zero-share organisation never ties with the most over-served owner (before v0.26.0 the ranks were
+clamped at 9 for everyone, and with ten or more distinct usage levels the two tied).
+
+**What this does not promise.** On vLLM's main branch (`scheduler.py` and `request_queue.py`, re-opened
+2026-11-04), when a running request cannot get KV blocks the scheduler preempts the running request with
+the largest `(priority, arrival_time)`, the waiting queue is a heap on `(priority, arrival_time)`, and a
+waiting request does not preempt a running one. An owner arriving on a full pool therefore waits for a
+slot or for a KV preemption of the third party: the guarantee is that the third party never takes a slot
+while the pool is full, and always yields first.
+
+### Billing its fluids {#ilaas-billing}
+
+No extra configuration is needed: active energy is attributed by weighted tokens to whoever worked, so
+the third party pays for its own requests. `GET /admin/fluids?group_by=org` gives its row; its
+`org_admin` sees only its own. `GET /admin/lending` gives the GPU-hours lent and borrowed (owners to
+third party).
+
+**Fixed costs are idle energy, cooling through the PUE (which multiplies idle and active kWh alike) and
+the racks.** We recommend `idle_energy = "by_usage"`: the fixed costs are spread over **all** clients,
+the third party included, pro rata to each organisation's active energy in the month and pool. With the
+default `by_share` the third party, holding no share, pays none of the idle energy and the owners bear it
+all. `by_usage` falls back to the shares for a month and pool in which nobody worked (before v0.26.0
+that idle energy was `(unallocated)` and went unbilled), and to `(unallocated)` only with neither usage
+nor shares.
+
+With `idle_watts > 0`, the idle baseline of a GPU during the third party's work is booked as idle and
+shared like any idle energy; with `idle_watts = 0`, the third party pays all the energy of the intervals
+it used.
+
+The **racks** (space, power distribution, network) are money, not energy:
+`fixed_cost "racks-b300" { monthly = 1800  pool = "b300" }`, with an optional `period "2026-12" { monthly = 1950 }`
+override. Each month's amount is split between the organisations on the same basis as the idle energy,
+then within an organisation pro rata to active energy, in integer minor units, so every grouping adds up
+to the configured amount to the cent. A report over part of a month gets the part covered **by time**
+(UTC), and the parts of a month add up exactly. The report has two new columns, `fixed_cost` and
+`total_cost` (`fluids_cost + fixed_cost`, rounded to `currency_decimals`, half to even, once per row);
+the existing columns are unchanged. The chargeback (`GET /admin/chargeback`, and the decision report's
+chargeback table) carries a `fixed_cost` column after `fluids_cost` (in the CSV the columns after it move
+by one), and a month's chargeback total is the fluids report's `total_cost` for that month.
 
 ## Upgrading under `ha` {#ha}
 
