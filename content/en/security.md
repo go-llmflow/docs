@@ -154,6 +154,26 @@ v0.2.0, scim v0.1.1, s3 v0.2.1, pii v0.2.1.
 The gateway's [limitations]({{< relref "gateway.md" >}}#limitations) list the open
 defects, re-checked in this audit.
 
+## Fixes in v0.35.0: an independent audit of v0.34.0 {#v0350}
+
+Three findings, each with a failing proof test that is now a regression test.
+
+1. **MEDIUM: `finance_viewer` still saw people and keys.** The v0.30.0 fix covered `/admin/spend`
+   only. `/admin/export`, `/admin/fluids?group_by=user` and `GET /admin/billing/closed?month=`
+   (the raw snapshot, with per-person rows and `gateway_version`) still showed them. One shared
+   guard now covers every report that groups, the closed snapshot is summed over the person for
+   that role, and a test asks every GET admin route as a `finance_viewer`.
+2. **MEDIUM: the JWT inference path ignored the stored (provider, subject) link.** A person of one
+   institution behind a federation issuer could be charged as another institution's linked user.
+   The scoped name is now the person only when no link exists for it or the link is this issuer's
+   and this subject's; otherwise the person is the synthetic `jwt-<hash>`. Tying the scope to the
+   institution claim of the token is not done: it needs a setting that says which claim carries it.
+3. **LOW: `migrate-users` renamed synthetic `jwt-<hash>` people** into the legacy domain, at every
+   run. It no longer plans them. If v0.34.0 `migrate-users --apply` ran while such records
+   existed, rename them back (the statements are in the gateway README, "v0.35.0 fixes").
+
+Also: a user name has one `@` at most, with something on each side (`a@b@c` was accepted).
+
 ## Security fixes in v0.18.1 {#v0181}
 
 Not part of the 2026-10-26 audit above: two defects of v0.18.0 found by a **post-merge
