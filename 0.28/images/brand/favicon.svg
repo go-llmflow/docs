@@ -1,0 +1,17 @@
+<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="go-llmflow">
+  <defs><linearGradient id="llmflow" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#0D9488"/><stop offset="1" stop-color="#134E4A"/></linearGradient></defs>
+  <rect width="256" height="256" rx="56" fill="url(#llmflow)"/>
+  <!-- A flow of requests: three streams enter on the left, pass one gate and
+       leave as two lanes, the upper one wider (the share that is guaranteed),
+       the lower one thinner (the share that borrows). -->
+  <g fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M36 80 H92"/>
+    <path d="M36 128 H92"/>
+    <path d="M36 176 H92"/>
+    <path d="M92 70 V186"/>
+    <path d="M92 104 H220" stroke-width="20"/>
+    <path d="M92 152 H220" stroke-width="8"/>
+  </g>
+  <g fill="#FFFFFF"><path d="M196 86 L228 104 L196 122 Z"/><path d="M196 140 L228 152 L196 164 Z"/></g>
+</svg>
