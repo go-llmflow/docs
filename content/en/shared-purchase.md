@@ -314,6 +314,28 @@ Every report states how it was computed: a `method` object in the JSON (method v
 parameters, closed months read), the headers `X-Llmflow-Method-Version`, `X-Llmflow-Gateway-Version` and
 `X-Llmflow-Method` on every response (CSV included), and a Method section and sheet in the decision report.
 
+## The energy beyond the GPUs, a tariff, preemptions {#node-energy}
+
+Since **gateway v0.31.0**:
+
+- **Node energy.** The DCGM counter is the GPUs' energy only. On an upstream, `redfish_url` names the
+  node's BMC (https; `redfish_user` and `redfish_password_file`, a secret reference; `redfish_ca_file` for
+  the certificate's authority). The gateway reads the chassis' `EnvironmentMetrics` **`EnergykWh`** counter
+  (DMTF EnvironmentMetrics v1.3.1), at the same instant as the GPUs: the node's energy minus the GPUs' is
+  the **overhead** of the interval, split like the GPUs' energy (the active part by the same token weights,
+  the idle part as idle). `node_overhead_factor` (1 to 5) is the fallback when no BMC can be read. A BMC that
+  reports only a power is not metered: a sampled power is an estimate, not a measurement.
+- **Sub-meter variance.** `meter "2026-10" { kwh = 41250.5 }` records the racks' sub-meter for a month; the
+  fluids report and the decision report show it against the measured IT energy as a difference. Nothing is
+  rescaled.
+- **Time-of-use tariff.** `timezone = "Europe/Paris"` and `tariff` bands (`price_per_kwh`, `days`, `from`,
+  `to`) price each hour at the band its local start falls in, daylight saving included (23 and 25 local
+  hours on the two days; the repeated 02:00 hour is priced twice). The idle energy is priced at the bands it
+  was used in. A closed month keeps its tariff.
+- **Preemptions, measured.** The vLLM counter `vllm:num_preemptions` is read per interval; the fluids
+  report gives, per month and pool, the energy of the intervals with preemptions and its share of the
+  total, an upper bound of what recompute can account for. Nothing is billed on it.
+
 ## Upgrading under `ha` {#ha}
 
 Under `ha` the pool's owner decides the apportionment. A replica from before v0.24.0 that owns a
