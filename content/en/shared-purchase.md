@@ -316,7 +316,7 @@ parameters, closed months read), the headers `X-Llmflow-Method-Version`, `X-Llmf
 
 ## The energy beyond the GPUs, a tariff, preemptions {#node-energy}
 
-Since **gateway v0.30.0**:
+Since **gateway v0.31.0**:
 
 - **Node energy.** The DCGM counter is the GPUs' energy only. On an upstream, `redfish_url` names the
   node's BMC (https; `redfish_user` and `redfish_password_file`, a secret reference; `redfish_ca_file` for
