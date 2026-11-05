@@ -240,12 +240,20 @@ jwt "partners" {
   (`eduperson_principal_name`, eduPersonPrincipalName: single-valued and `caseIgnoreMatch` in the eduPerson
   schema, the scope being the domain that issued it; or `voperson_id`); names are compared in ASCII lower
   case, by go-authn/oidc v0.6.0 `ScopedName`.
-- **Migration.** Accounts that predate scoped names are unscoped. The institution they belong to sets
-  `domain = "example.org"` on its `sso` provider, `jwt` block and `scim` block: an unscoped `alice` is
-  `alice@example.org`, and a stored user `alice` is that person and keeps their name, roles and tokens until
-  renamed. Only one issuer may carry `domain`, since unscoped names belong to one institution; the others
-  list theirs in `domains`. Without a domain an unscoped name is no identity, so **upgrading a gateway
-  that uses `sso`, `jwt` or `scim` needs `domain` set** (`scim` without one is a configuration error).
+- **Migration: `migrate-users`** (v0.32.0). Accounts that predate scoped names are bare (`alice`). The
+  institution they belong to sets `domain = "example.org"` on its `sso` provider, `jwt` block and `scim`
+  block (only one issuer may carry it, since unscoped names belong to one institution; the others list
+  theirs in `domains`). Then `llmflow-gateway migrate-users --config gateway.hcl` prints the plan and
+  `--apply` renames every stored bare user to `alice@example.org` **and everything keyed by their name** in
+  one transaction: roles, admin tokens, the identity link, the owners of keys, budgets and the budget
+  ledger (user and workload-profile scopes), spend records, profile assignments and warning marks. It is
+  idempotent, refuses to run when a new name is already in use (it lists the collisions and changes
+  nothing), and is written to the audit log before it starts and after it ends. The audit entries (a hash
+  chain), the SCIM records and the history of people who were never stored users are left as they were.
+  **The gateway refuses to start while stored users with bare names remain and a domain is configured**;
+  `legacy_unscoped_names = true` starts it anyway with a read-only alias until you migrate. Without a domain
+  an unscoped name is no identity, so **upgrading a gateway that uses `sso`, `jwt` or `scim` needs
+  `domain` set** (`scim` without one is a configuration error).
 - **SCIM acts only on the users it provisioned** (v0.30.0). A user SCIM creates has the origin `scim`; only
   such a user is enabled, disabled or retired by SCIM, so a SCIM client cannot disable a proxy admin by
   creating and deleting a user of that name, and a user an administrator disabled stays disabled whatever
