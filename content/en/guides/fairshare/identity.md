@@ -57,6 +57,7 @@ cache_salt_key_file = "/etc/llmflow/cache-salt.key"
 
 sso {
   issuer             = "https://bridge.example.org"
+  domain             = "example.org"
   client_id          = "llmflow-admin"
   client_secret_file = "/etc/llmflow/sso.secret"
   redirect_url       = "https://llm.example.org/admin/callback"
@@ -75,6 +76,7 @@ sso {
 jwt {
   issuer   = "https://bridge.example.org"
   audience = "llmflow"
+  domain   = "example.org"
   type     = "at+jwt"
   map {
     value = "b-lab"
