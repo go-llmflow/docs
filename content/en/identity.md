@@ -249,7 +249,17 @@ jwt "partners" {
   ledger (user and workload-profile scopes), spend records, profile assignments and warning marks. It is
   idempotent, refuses to run when a new name is already in use (it lists the collisions and changes
   nothing), and is written to the audit log before it starts and after it ends. The audit entries (a hash
-  chain), the SCIM records and the history of people who were never stored users are left as they were.
+  chain) and the SCIM records are left as they were.
+
+  **People who were never stored users (v0.34.0).** A caller with a JWT only has no stored user: their spend
+  records, and perhaps a budget, carry the bare name. Without a rename, after the upgrade the same person is
+  `alice` before and `alice@example.org` after, and per-person reports and `/v1/me/usage` split in two. Since
+  v0.34.0 `migrate-users` plans those names too, with one grouped query (the records are not loaded), and
+  renames their records, budgets, ledger, profile assignments and warning marks to `alice@example.org`, in the
+  same transaction, with the domain used for stored users. A new name already in use (a stored user, a link, a
+  budget, a profile or warning row) is a collision: it is listed and nothing is changed. Records already under
+  `alice@example.org` are not a collision; the history joins them. A second run changes nothing, and the audit
+  entry counts these people as `record_only_users`. Run it after v0.34.0, even if you migrated with v0.32.0.
   **The gateway refuses to start while stored users with bare names remain and a domain is configured**;
   `legacy_unscoped_names = true` starts it anyway with a read-only alias until you migrate. Without a domain
   an unscoped name is no identity, so **upgrading a gateway that uses `sso`, `jwt` or `scim` needs
