@@ -248,7 +248,7 @@ by one), and a month's chargeback total is the fluids report's `total_cost` for 
 
 ## What a real bill holds {#bill}
 
-Since **gateway v0.27.0** the fluids report carries more than electricity. The example is
+Since **gateway v0.28.0** the fluids report carries more than electricity. The example is
 `examples/b300-ilaas.hcl`.
 
 ```hcl
