@@ -323,8 +323,13 @@ Since **gateway v0.31.0**:
   the certificate's authority). The gateway reads the chassis' `EnvironmentMetrics` **`EnergykWh`** counter
   (DMTF EnvironmentMetrics v1.3.1), at the same instant as the GPUs: the node's energy minus the GPUs' is
   the **overhead** of the interval, split like the GPUs' energy (the active part by the same token weights,
-  the idle part as idle). `node_overhead_factor` (1 to 5) is the fallback when no BMC can be read. A BMC that
-  reports only a power is not metered: a sampled power is an estimate, not a measurement.
+  the idle part as idle). `node_overhead_factor` (1 to 5) is the fallback when no BMC can be read. Since
+  **v0.32.0**, a BMC that reports only a power is metered by the **trapezoid** of its samples (exact for a
+  constant power, an estimate between samples; two samples further apart than three rounds are not joined),
+  and a counter that goes down (a BMC reboot) is never billed: those intervals, and a missed read, fall to the
+  factor. The fluids report states, per month and pool, how much overhead came from the counter, the
+  integrated power or the factor. The Redfish client is
+  [go-redfish/redfish](https://github.com/go-redfish/redfish).
 - **Sub-meter variance.** `meter "2026-10" { kwh = 41250.5 }` records the racks' sub-meter for a month; the
   fluids report and the decision report show it against the measured IT energy as a difference. Nothing is
   rescaled.
