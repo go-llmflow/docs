@@ -246,6 +246,74 @@ the existing columns are unchanged. The chargeback (`GET /admin/chargeback`, and
 chargeback table) carries a `fixed_cost` column after `fluids_cost` (in the CSV the columns after it move
 by one), and a month's chargeback total is the fluids report's `total_cost` for that month.
 
+## What a real bill holds {#bill}
+
+Since **gateway v0.27.0** the fluids report carries more than electricity. The example is
+`examples/b300-ilaas.hcl`.
+
+```hcl
+fluids {
+  currency           = "EUR"
+  idle_energy        = "by_usage"
+  price_per_gb       = 0.02  # network
+  price_per_gb_month = 0.05  # storage
+  fixed_cost "racks" {
+    monthly = 1800
+  }
+  fixed_cost "b300-depreciation" {
+    monthly = 4200 # purchase price / months of life: straight line
+    pool    = "b300"
+    charge  = "non_shareholders"
+  }
+  fixed_cost "storage-array" {
+    monthly = 900
+    basis   = "storage_gb_month"
+  }
+}
+org "tiers" {
+  share = 0
+  billing {
+    markup = 0.15
+  }
+}
+```
+
+- **Fixed cost basis.** `energy` (the default, the idle-energy rule), `shares`, `network_bytes` (a switch
+  by traffic) or `storage_gb_month` (a storage array by storage used). Use `fixed_cost` for maintenance,
+  licences, storage and staff as well. Shared model weights are platform storage: a fixed cost, not
+  metered per organisation.
+- **Hardware the owners already paid for.** `charge = "non_shareholders"` bills the (straight-line)
+  depreciation only to organisations with no share of the pool, on the same basis, and credits what they
+  pay to the owners pro rata to the GPU-hours each lent them (the lending matrix). With no
+  non-shareholder in use nothing is billed.
+- **Network, metered.** Bytes of the request bodies forwarded and of the answers written to clients,
+  recorded on every request (an aborted stream counts what it delivered; headers and TLS framing are not
+  counted), per organisation and down to team, project and user. Column `network_gb`, priced by
+  `price_per_gb`.
+- **Storage, metered.** What the gateway keeps per organisation: its usage records in PostgreSQL and the
+  request-log objects it writes to the export, sampled by day (the bytes stored at the end of each UTC
+  day) and summed into GB-months. Column `storage_gb_month`, priced by `price_per_gb_month`.
+- **Markup.** `billing { markup = 0.15 }` adds 15 % to the organisation's costs, in its own column.
+- **Columns.** `fixed_cost`, `network_cost`, `storage_cost`, `markup`, `credit` and
+  `total_cost = fluids + fixed + network + storage + markup - credit`, each rounded to the minor unit
+  once per row. The chargeback CSV has the new columns and its later columns moved: read it by name.
+
+### Closing a month {#close}
+
+Reports are computed live, so a corrected PUE or a late record would rewrite a month that was already
+invoiced. `POST /admin/billing/close?month=YYYY-MM` (proxy admin only, a month that has ended) freezes it:
+an immutable snapshot with the parameters used (PUE, prices, fixed costs, markups, method and gateway
+versions) whose SHA-256 is in the hash-chained audit log. A report over the whole month reads the
+snapshot; a difference found later is booked once as an **adjustment** line on the next open month (a credit
+note when negative), never a rewrite, and there is no reopening. `GET /admin/billing/closed` lists the
+closed months.
+
+### The method of a report {#method}
+
+Every report states how it was computed: a `method` object in the JSON (method version, gateway version,
+parameters, closed months read), the headers `X-Llmflow-Method-Version`, `X-Llmflow-Gateway-Version` and
+`X-Llmflow-Method` on every response (CSV included), and a Method section and sheet in the decision report.
+
 ## Upgrading under `ha` {#ha}
 
 Under `ha` the pool's owner decides the apportionment. A replica from before v0.24.0 that owns a
