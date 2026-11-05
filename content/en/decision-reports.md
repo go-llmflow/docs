@@ -115,6 +115,14 @@ teams, keys or users, no audit log, no write. **Only a proxy admin grants it**
 open another organisation's reports. It is also a valid `sso` role mapping. Every report route
 has a row in the authorisation-matrix test with a `finance_viewer` column.
 
+A finance office reads money and energy, **not people**. Since v0.30.0 `/admin/spend` refuses
+`group_by` with `user` or `key`; **since v0.35.0 that is one guard for every report that groups**:
+`/admin/export` refuses it in CSV (its default grouping and the XLSX workbook carry no person),
+`/admin/fluids?group_by=user` answers 403, and `GET /admin/billing/closed?month=` serves the
+closed snapshot summed over the person and without `gateway_version` (header
+`X-Llmflow-Redacted: people`; the checksum is that of the whole snapshot). A test asks every GET
+admin route as a `finance_viewer`, so a route added later cannot forget the guard.
+
 **Cost centres** are general-ledger codes on an organisation, a lab or a project; the most
 specific wins (project, then lab, then organisation):
 
