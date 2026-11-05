@@ -324,7 +324,7 @@ Since **gateway v0.31.0**:
   (DMTF EnvironmentMetrics v1.3.1), at the same instant as the GPUs: the node's energy minus the GPUs' is
   the **overhead** of the interval, split like the GPUs' energy (the active part by the same token weights,
   the idle part as idle). `node_overhead_factor` (1 to 5) is the fallback when no BMC can be read. Since
-  **v0.32.0**, a BMC that reports only a power is metered by the **trapezoid** of its samples (exact for a
+  **v0.33.0**, a BMC that reports only a power is metered by the **trapezoid** of its samples (exact for a
   constant power, an estimate between samples; two samples further apart than three rounds are not joined),
   and a counter that goes down (a BMC reboot) is never billed: those intervals, and a missed read, fall to the
   factor. The fluids report states, per month and pool, how much overhead came from the counter, the
