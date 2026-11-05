@@ -201,8 +201,13 @@ jwt "partners" {
 - **An identity is (provider, subject)**, because `sub` is unique only within its
   issuer (OpenID Connect Core §2). A stored user is linked to the provider and
   subject of the first login; the same name arriving through another provider, or
-  with another subject, is refused. Users stored before v0.27.0 need no migration:
-  the first provider adopts them.
+  with another subject, is refused, and a session opened before the user was
+  stored, or by another identity, is dropped once the user exists. Users stored
+  before v0.27.0 need no migration: a user without a link is adopted at their first
+  login by the single `sso` issuer of earlier versions, or by a `provider` block only
+  when its `orgs` cover every role the user holds (proxy-wide roles need
+  `allow_proxy_roles`); a user with no role is adopted only by a provider with
+  `adopt = true`.
 - **`accept { claim, values }`**: all the `accept` blocks must hold, and any value of a
   multi-valued claim may match. The person is told the institution value that was
   refused and nothing else. `schac_home_organization` (a domain name, `caseIgnoreMatch`
@@ -211,6 +216,15 @@ jwt "partners" {
   The claim must be in the ID token (the access token for `jwt`): MyAccessID's
   documentation lists `schac_home_organization` for userinfo and introspection, not
   for the ID token, and the gateway does not call userinfo.
+  Only ASCII letters are folded (the Kelvin sign U+212A is not a `k`). The matching
+  and the routing are [go-authn/oidc](https://github.com/go-authn/oidc) v0.5.0 (`Set`,
+  `Accept`); the mix-up defences are [go-authn/rp](https://github.com/go-authn/rp)
+  v0.3.0 (`Set`, `CheckIssuer`).
+- **In front of a SAML federation**, [go-authn/bridge](https://github.com/go-authn/bridge)
+  can already restrict who logs in, by IdP entityID (`saml { idps = [...] }`), and
+  disable one institution's IdP at run time. `accept` filters on the institution claim
+  whatever the proxy; with the bridge, set `id_token_claims = true` on the gateway's
+  client so the claim is in the ID token.
 - **Inference tokens** are routed to their `jwt` block by `iss`; an unknown `iss` is a
   401 and no other issuer's keys are tried. Each block has its own audience, JWKS,
   maps, `orgs` and `accept`.
