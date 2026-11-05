@@ -50,6 +50,7 @@ key_rotation {
 jwt {
   issuer   = "https://sso.example.org/realms/research"
   audience = "llmflow"
+  domain   = "example.org" # a person is local@example.org (see below)
   type     = "at+jwt"
   rpm      = 60
   map {
@@ -66,6 +67,7 @@ jwt {
 
 sso {
   issuer             = "https://login.example.org"
+  domain             = "example.org"
   client_id          = "llmflow-admin"
   client_secret_file = "/etc/llmflow/sso.secret"
   redirect_url       = "https://llm.example.org/admin/callback"
@@ -85,6 +87,7 @@ sso {
 scim {
   token_file = "/etc/llmflow/scim.token"
   base_url   = "https://llm.example.org/scim/v2"
+  domain     = "example.org"
   group "Lab Physics" { team = "lab-nlp" }
   group "Lab Physics Leads" {
     team = "lab-nlp"
@@ -137,7 +140,7 @@ OpenID provider: the `sso` block takes one `provider "<name>"` block per provide
 and the `jwt` block becomes one `jwt "<name>"` block per issuer. Behind a federation
 proxy (eduGAIN through MyAccessID, eduTEAMS, Renater, a Keycloak broker), an
 `accept` list keeps the login to the institutions you serve. The single-issuer
-forms above stay valid. This configuration was run through `check-config` v0.27.0
+forms above stay valid. This configuration was run through `check-config` v0.30.0
 (it is `examples/federation.hcl` in the gateway repository):
 
 ```hcl
@@ -149,6 +152,7 @@ sso {
     client_id          = "llmflow-admin"
     client_secret_file = "vault:secret/llmflow#sso-univ-a"
     orgs               = ["univ-a"]
+    domain             = "univ-a.example" # the institution whose accounts predate scoped names
     role {
       value = "llm-admins"
       role  = "org_admin"
@@ -225,6 +229,27 @@ jwt "partners" {
   disable one institution's IdP at run time. `accept` filters on the institution claim
   whatever the proxy; with the bridge, set `id_token_claims = true` on the gateway's
   client so the claim is in the ID token.
+- **A person is `local@domain`** (v0.29.0; SCIM since v0.30.0). An account is relative to an
+  institution's domain: there is no global "alice", and a username claim is not an identity (a token
+  of one issuer saying `preferred_username` "alice" was once charged to the alice of another). The
+  name of an administrator who logs in, of a JWT's holder and of a provisioned user is scoped, and its
+  domain is **checked against what the issuer may assert**, as a Shibboleth service checks a scope: the
+  issuer's `domain` and `domains`, or the institutions of its `accept` list. A name whose scope the issuer
+  may not assert is refused (a login is 403; a token is attributed to the synthetic `jwt-…` key id of its
+  issuer and subject). The claim carrying the name is the `username_claim`
+  (`eduperson_principal_name`, eduPersonPrincipalName: single-valued and `caseIgnoreMatch` in the eduPerson
+  schema, the scope being the domain that issued it; or `voperson_id`); names are compared in ASCII lower
+  case, by go-authn/oidc v0.6.0 `ScopedName`.
+- **Migration.** Accounts that predate scoped names are unscoped. The institution they belong to sets
+  `domain = "example.org"` on its `sso` provider, `jwt` block and `scim` block: an unscoped `alice` is
+  `alice@example.org`, and a stored user `alice` is that person and keeps their name, roles and tokens until
+  renamed. Only one issuer may carry `domain`, since unscoped names belong to one institution; the others
+  list theirs in `domains`. Without a domain an unscoped name is no identity, so **upgrading a gateway
+  that uses `sso`, `jwt` or `scim` needs `domain` set** (`scim` without one is a configuration error).
+- **SCIM acts only on the users it provisioned** (v0.30.0). A user SCIM creates has the origin `scim`; only
+  such a user is enabled, disabled or retired by SCIM, so a SCIM client cannot disable a proxy admin by
+  creating and deleting a user of that name, and a user an administrator disabled stays disabled whatever
+  SCIM writes next.
 - **Inference tokens** are routed to their `jwt` block by `iss`; an unknown `iss` is a
   401 and no other issuer's keys are tried. Each block has its own audience, JWKS,
   maps, `orgs` and `accept`.
