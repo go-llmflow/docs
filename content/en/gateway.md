@@ -263,7 +263,7 @@ model "llama-3.3-70b" {
 | `cache_isolation`, `cache_salt_key_file` | prefix-cache tenant scope (`org` default, `team`, `key`, `none`) and the HMAC key file (at least 32 bytes; required unless `none`) |
 | `jwt { issuer, audience, type, rpm, map { claim, value, team, project } }` | OpenID Connect access tokens on the inference API; see [Identity]({{< relref "identity.md" >}}#jwt) |
 | `sso { issuer, client_id, client_secret_file, redirect_url, scopes, session_ttl, role { claim, value, role, team } }` | administrator single sign-on |
-| `scim { token_file, base_url, group "<name>" { team, role } }` | SCIM 2.0 provisioning |
+| `scim { token_file, base_url, domain, group "<name>" { team, role } }` | SCIM 2.0 provisioning |
 | `vault { address, token_file, ca_file, namespace, cache_ttl }`, `key_rotation { vault_prefix, check_interval }` | OpenBao or Vault secret references (`vault:<mount>/<path>#<field>`), and scheduled key rotation |
 | `trusted_proxies`, `routes { inference, admin, metrics, healthz { allow = [...] } }` | reverse proxies whose `X-Forwarded-For` is read, and the networks allowed per route class |
 | `audit { signing_key_file, checkpoint_interval, anchor, anchor_max_lag, retention, prune_interval }`, `export "<name>" { kind, endpoint, bucket, ... }` | the admin audit log and where its checkpoints, and the request logs, are exported; see [Audit and logging]({{< relref "audit.md" >}}) |
@@ -1120,6 +1120,7 @@ mcp_server "github" {
   protocol           = "2026-07-28"
   timeout            = "60s"
   max_response_bytes = 8388608
+  orgs               = ["etabA"] # the organisations whose teams may use it (required, v0.30.0)
 }
 ```
 
