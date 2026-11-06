@@ -246,6 +246,48 @@ the existing columns are unchanged. The chargeback (`GET /admin/chargeback`, and
 chargeback table) carries a `fixed_cost` column after `fluids_cost` (in the CSV the columns after it move
 by one), and a month's chargeback total is the fluids report's `total_cost` for that month.
 
+### Being a node of a peer dispatcher {#ilaas-federation}
+
+Since **gateway v0.37.0**. ILaaS routes its users with
+[aristote-dispatcher](https://github.com/CentraleSupelec/aristote-dispatcher) (MIT, read at v1.5.0). It
+lists each backend as `{url, token, organization, max_parallel_requests}`, forwards the client's path
+under `url` with the token as a bearer, once, and, with its `least_busy` strategy, **polls `<url>/metrics`
+without credentials**, scoring a node by the 95th percentile of `vllm:time_to_first_token_seconds` over a
+24 s window. A node with no such histogram scores -1 ("never used") and is chosen first. Pointed at the
+gateway as it was, the dispatcher sent it everything, and the 429 of a full pool reached the end user; the
+gateway's own `/metrics` must not be opened, it carries per-organisation activity.
+
+```hcl
+federation "ilaas" {
+  prefix           = "/fed/ilaas"
+  org              = "tiers"
+  metrics_networks = ["10.0.0.0/8"]
+}
+```
+
+In the dispatcher the node is `url = https://llm.example.org/fed/ilaas` and a key of the organisation
+`tiers`.
+
+- Under the prefix the inference API answers as at the root, **for the keys of `org` only** (403 before
+  any budget is held). The administration, the UI, SSO, SCIM, MCP, `/healthz` and the gateway's
+  `/metrics` are not routes there; a path that is not in clean form is 404.
+- `GET <prefix>/metrics` asks for no key and answers the listed networks only. It carries one histogram,
+  `vllm:time_to_first_token_seconds` (`_bucket`, `_sum`, `_count`, label `model_name`) with vLLM's own
+  bounds (`TIME_TO_FIRST_TOKEN_BUCKETS` in `vllm/v1/metrics/buckets.py`), and nothing of the owners.
+- It observes, for the requests that came through the prefix, the time to the first body byte (the
+  first event of a stream; the whole answer when not streamed). **Every refusal for lack of room** (429
+  `pool_spare` or a rate limit, 502, 503, 504) is counted in the `+Inf` bucket only: once more than 5 %
+  of a window was refused the dispatcher's p95 is +Inf and it sends the traffic elsewhere. After a
+  window without traffic its diff is zero in every bucket and the node scores the first bound (0.001,
+  not -1), so it is tried again. Before any request the exposition has no bucket line.
+- With several models the dispatcher merges the lines bucket by bucket and the last model by name
+  wins: give the peer one model per node when its score must mean something.
+- `check-config` refuses a malformed, reserved or overlapping prefix, an unknown `org`, an `org` that
+  holds a share of a pool a model uses, and an empty or `/0` `metrics_networks`. Use `borrow = "spare"` on
+  the lent pool: with `borrow = "all"` the peer queues at vLLM instead of being refused.
+
+The example is the end of `examples/b300-ilaas.hcl`.
+
 ## What a real bill holds {#bill}
 
 Since **gateway v0.28.0** the fluids report carries more than electricity. The example is
