@@ -267,7 +267,9 @@ jwt "partners" {
 - **SCIM acts only on the users it provisioned** (v0.30.0). A user SCIM creates has the origin `scim`; only
   such a user is enabled, disabled or retired by SCIM, so a SCIM client cannot disable a proxy admin by
   creating and deleting a user of that name, and a user an administrator disabled stays disabled whatever
-  SCIM writes next.
+  SCIM writes next. **Since v0.36.0 the roles follow the same rule**: SCIM manages the roles of a user of
+  origin `scim` only, so posting the name of a hand-made user no longer revokes its hand-granted roles,
+  and a mapped group grants no role to a user SCIM did not create.
 - **Inference tokens** are routed to their `jwt` block by `iss`; an unknown `iss` is a
   401 and no other issuer's keys are tried. Each block has its own audience, JWKS,
   maps, `orgs` and `accept`.
