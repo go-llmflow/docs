@@ -198,6 +198,21 @@ Five findings; each proof test fails before its fix and is now a regression test
 5. **LOW, bench v0.9.2:** `fakevllm` did not tighten the mode of an existing recording file holding
    Authorization headers; it now sets 0600 and refuses a file that is not regular.
 
+## Fix in v0.36.1: names compare without case, ASCII letters only {#v0361}
+
+A patch release. Go's `strings.EqualFold` and `ToLower` fold Unicode: the Kelvin sign U+212A is a "k" and
+U+017F (long s) an "s". The gateway now compares names with go-authn/oidc v0.7.0 `ASCIILower` and
+`EqualASCIIFold` (the fold that produces the scoped names), so:
+
+- the in-memory SCIM store no longer treats `kate@example.org` and its Kelvin-sign spelling as one user (the
+  second was refused and a lookup returned both);
+- a SCIM group `Lab Phyſics` is no longer mapped to the team role of `Lab Physics`;
+- group names in `scim` blocks and the `domain` values are folded ASCII-only too;
+- with PostgreSQL, the unique index on `lower(name)` is unchanged (it fails closed) and lookups return only
+  ASCII-fold matches.
+
+The dependency go-authn/oidc moves from v0.6.0 to v0.7.0.
+
 ## Security fixes in v0.18.1 {#v0181}
 
 Not part of the 2026-10-26 audit above: two defects of v0.18.0 found by a **post-merge

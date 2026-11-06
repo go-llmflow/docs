@@ -239,7 +239,7 @@ jwt "partners" {
   issuer and subject). The claim carrying the name is the `username_claim`
   (`eduperson_principal_name`, eduPersonPrincipalName: single-valued and `caseIgnoreMatch` in the eduPerson
   schema, the scope being the domain that issued it; or `voperson_id`); names are compared in ASCII lower
-  case, by go-authn/oidc v0.6.0 `ScopedName`.
+  case, by go-authn/oidc `ScopedName` (v0.7.0 since gateway v0.36.1).
 - **Migration: `migrate-users`** (v0.32.0). Accounts that predate scoped names are bare (`alice`). The
   institution they belong to sets `domain = "example.org"` on its `sso` provider, `jwt` block and `scim`
   block (only one issuer may carry it, since unscoped names belong to one institution; the others list
@@ -270,6 +270,13 @@ jwt "partners" {
   SCIM writes next. **Since v0.36.0 the roles follow the same rule**: SCIM manages the roles of a user of
   origin `scim` only, so posting the name of a hand-made user no longer revokes its hand-granted roles,
   and a mapped group grants no role to a user SCIM did not create.
+- **Names compare without case, ASCII letters only** (go-authn/oidc `ASCIILower` and `EqualASCIIFold`, v0.36.1).
+  `strings.EqualFold` folds Unicode: the Kelvin sign U+212A is a "k" and U+017F (long s) an "s", so
+  `kate@example.org` and its Kelvin-sign spelling were one SCIM user in the in-memory store (the second was
+  refused, a lookup of `kate` returned both), and a SCIM group `Lab Phyſics` received the roles mapped to
+  `Lab Physics`. Group names in `scim` blocks and the `domain` values are folded the same way. With PostgreSQL
+  the unique index on `lower(name)` is unchanged and still refuses the second, Kelvin-spelled user (it fails
+  closed); a lookup returns only the ASCII-fold matches.
 - **Inference tokens** are routed to their `jwt` block by `iss`; an unknown `iss` is a
   401 and no other issuer's keys are tried. Each block has its own audience, JWKS,
   maps, `orgs` and `accept`.
