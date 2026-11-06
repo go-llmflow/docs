@@ -131,7 +131,7 @@ reachable from them (net/http, crypto/tls, crypto/x509; fixed in Go 1.27.2 and
 1.27.3). The gateway's binary is not affected because it is built with 1.27.3, but
 those modules should raise their `go` line. go-authn/scim v0.1.0 is clean. The
 gateway v0.10.0 takes the new releases at the go 1.27.3 floor: oidc v0.4.3, rp
-v0.2.0, scim v0.1.1, s3 v0.2.1, pii v0.2.1.
+v0.2.0, scim v0.1.1, s3 v0.2.1, pii v0.2.1 (pii v0.2.2 since gateway v0.36.0).
 
 ## Residual risks {#residual}
 
@@ -173,6 +173,30 @@ Three findings, each with a failing proof test that is now a regression test.
    existed, rename them back (the statements are in the gateway README, "v0.35.0 fixes").
 
 Also: a user name has one `@` at most, with something on each side (`a@b@c` was accepted).
+
+## Fixes in v0.36.0: a second audit of v0.35.0 {#v0360}
+
+Five findings; each proof test fails before its fix and is now a regression test.
+
+1. **HIGH: billing bypass on `/v1/messages` streaming.** The usage of `message_start`
+   (`output_tokens` 0 or 1) was taken as final, so a client that left after the text and before
+   `message_delta` was charged one output token, `estimated:false`, and the delta-count fallback never
+   ran: unlimited output under a hard quota. Usage is now final only once `message_delta` has been seen;
+   a stream cut before it is charged the larger of what `message_start` reported and the deltas
+   forwarded (`text_delta`, `thinking_delta`, `input_json_delta`), marked estimated. The same pattern was
+   audited on chat, Responses, Bedrock invoke and converse streams and transcription: Responses took a
+   usage object from any event (`response.in_progress`), and now reads only `response.completed`,
+   `.incomplete` and `.failed`; the others were already final-only or charge the worst case.
+2. **MEDIUM: a non-streaming request cut before its answer** was charged the prompt estimate and no
+   output (free GPU time, fair-share priority kept). It is now charged the worst case under a hard
+   budget, and `max_tokens` of output otherwise.
+3. **MEDIUM: SCIM acted on roles of users it did not create.** Posting a SCIM user with the name of a
+   hand-made user revoked its hand-granted `team_admin`, and group membership granted `team_admin` to
+   non-SCIM users. A user is now provisioned, and its roles managed, only when its origin is `scim`.
+4. **MEDIUM and LOW, pii v0.2.2:** a neighbouring character hid an e-mail (`...john.doe@x.org`) or an IPv6
+   address (`IPv6:2001:db8::1`, `2001:db8::1:`), and a lower-case IBAN was missed. Fixed; the gateway takes pii v0.2.2.
+5. **LOW, bench v0.9.2:** `fakevllm` did not tighten the mode of an existing recording file holding
+   Authorization headers; it now sets 0600 and refuses a file that is not regular.
 
 ## Security fixes in v0.18.1 {#v0181}
 

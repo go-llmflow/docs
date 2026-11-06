@@ -82,7 +82,9 @@ guarded streams pass through an Anthropic event filter; error bodies carry
 `"type": "error"`; `/v1/messages/count_tokens` (since v0.12.1) goes to vLLM's own
 endpoint and returns an **exact** count, which Claude Code uses instead of its estimate;
 it is authenticated and rate limited, not charged and not guarded. Accounting counts
-cached tokens as vLLM reports them.
+cached tokens as vLLM reports them. A stream is charged from its final `message_delta`
+(since v0.36.0 the usage of `message_start` is only a floor): a client that leaves before it
+is charged at least the deltas it received, marked estimated.
 
 ## Claude Code {#claude-code}
 

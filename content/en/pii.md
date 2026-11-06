@@ -29,6 +29,11 @@ ms := s.Find(text)                   // []pii.Match{Kind, Start, End}, ordered, 
 clean := pii.Mask(text, ms, pii.Placeholder) // "IBAN [IBAN], mail [EMAIL]"
 ```
 
+Since v0.2.2 (second security audit of v0.2.1) a neighbouring character no longer hides a
+value: an e-mail after dots (`...john.doe@x.org`), an IPv6 address after a glued label
+(`IPv6:2001:db8::1`) or before a closing colon (`2001:db8::1:`), and an IBAN typed in lower
+case (read as capitals) are found.
+
 `pii.MaxLen` (254 bytes) bounds the length of any match. A caller masking a stream
 can hold back the last `MaxLen` bytes, and will then never release the start of a
 match whose end it has not seen yet.
