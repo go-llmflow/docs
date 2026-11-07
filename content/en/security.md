@@ -219,10 +219,14 @@ A patch release. The fuzz smoke of `FuzzBedrockStream` failed with "complete, bu
 The stream converter took a `message_delta` as the final usage when each count was non-negative, and the
 usage tracker then refused the same delta when the counts, each valid, added up past an int64
 (`input_tokens` 9223372036854775807 and a `cache_read_input_tokens` of 1): a stream reported complete with
-no usage read. The charge was already safe (the worst case is held), but the two disagreed. They now decide
-with one function, `openai.ValidMessagesCounts` (each count in [0, 2^60], so the sums cannot overflow). The
-input is a committed fuzz seed (`gateway/testdata/fuzz/FuzzBedrockStream/usage_sum_overflow`), and the
-fuzz-smoke CI job now uploads the failing corpus entry as an artifact.
+no usage read. The charge was already safe (the worst case is held), but the two disagreed. A first fix made
+them share a bound, `openai.ValidMessagesCounts` (each count in [0, 2^60], so the sums cannot overflow; seed
+`usage_sum_overflow`). The next fuzz smoke found a **second disagreement**, with its input kept by the new
+artifact upload (the fuzz-smoke job now uploads the failing corpus entry): a usage key spelled `usAge`, which
+Go's JSON decoder matches case-insensitively and the tracker's byte search for `"usage"` does not (seed
+`usage_key_case`). Two copies of one rule had disagreed twice, so there is no second copy any more: the
+converter feeds each event it writes to the tracker that `CopySSEFor` runs (`openai.MessagesStream`), and a
+stream is complete only when the reader finds the final usage in it.
 
 Also in v0.37.1, `check-config` refuses a `federation` block on a gateway that serves more than one model
 (see [Being a node of a peer dispatcher]({{< relref "shared-purchase.md" >}}#ilaas-federation)).
