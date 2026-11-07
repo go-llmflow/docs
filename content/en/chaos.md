@@ -1,0 +1,96 @@
+---
+title: "Chaos"
+weight: 32
+---
+
+# Chaos: faults in, invariants out {#chaos}
+
+`llmchaos` (in [`bench`](https://github.com/go-llmflow/bench), `cmd/llmchaos`) attacks a **llmflow-gateway
+binary** from the outside. It writes the configuration of a multi-institution deployment, starts the gateway
+as a process, injects faults while clients send traffic, and judges nine invariants after every scenario. A
+scenario is a row of a Go table and is replayed from its name and a seed.
+
+```sh
+go install github.com/go-llmflow/bench/cmd/llmchaos@latest
+llmchaos list
+llmchaos run baseline upstream-cut-sse --seed 1 --seed 2 \
+  --gateway ./llmflow-gateway --workdir ~/chaos-runs
+```
+
+## The deployment {#chaos-deployment}
+
+Three owner organisations with shares 50/30/20 of one pool of 8 slots; an ILaaS third party (`tiers`, share 0,
+`borrow = "spare"`, a 15 % markup) reached through a `federation` mount; two identity providers (one with a legacy
+`domain`, one with `domains`) and a federation issuer accepting a list of `schac_home_organization`; hard and soft
+budgets on a key, a team, two organisations and a person; fluids with idle energy, fixed costs, a
+`charge = "non_shareholders"` credit and a time-of-use tariff; a fake DCGM exporter and a BMC over TLS (go-redfish
+`mockbmc` for the Redfish service, plus a controllable `EnvironmentMetrics` counter); two HA replicas on one
+PostgreSQL in CI. The upstream is the recording fake vLLM of `bench` behind a fault injector.
+
+## The invariants {#chaos-invariants}
+
+| # | invariant | how it is judged |
+|---|---|---|
+| 1 | no hard budget exceeded beyond the documented worst case, in every scope | the clients' own sum of answers read in full against the limit, plus the gateway's `committed` and `held`; the excess allowed is what answers cost above their W |
+| 2 | no request billed to another person or org | per key and per org, billed requests and cost must lie between what the caller received in full and what it could have been charged; a failed request bills nothing |
+| 3 | the spare borrower never goes over the owners; the owners' share converges | borrower concurrency at the upstream never above the pool; `X-Llmflow-Priority` of the borrower behind every owner's; after the owners ramp up (3 s grace), the borrower gets at most 10 % of the answers and each owner's share of completed work is within 15 points of 50/30/20. Judged only in a scenario whose upstream models vLLM's priority scheduling (a waiting queue ordered by priority then arrival, a waiting request never preempting a running one); elsewhere the shares are not judged and the verdict says so |
+| 4 | fluids conservation | active + idle = kWh per row; rows = GPU energy + stated overhead; fixed costs minus credits = the racks, credits = the depreciation when a non-shareholder used energy |
+| 5 | a closed month never changes | PostgreSQL scenarios only (CI): the month that has just ended is closed during traffic; its fluids and spend reports must be byte-identical afterwards and a second close must answer 409. The closed month holds no traffic of the campaign (the gateway's clock cannot be moved from outside), so this judges immutability of the snapshot, not the figures in it. Everywhere else: N/A |
+| 6 | refusals | 429 has a positive `Retry-After`; no 200 with an empty body; a token the gateway must refuse (clock skew beyond `clock_skew`, key removed from the JWKS) gets 401 |
+| 7 | no leak | the harness's goroutines and descriptors, and the gateway's descriptors, return to their start |
+| 8 | HA spend | spend neither lost nor doubled across replica kills, partitions and reloads |
+| 9 | federation metrics | no other organisation or key in the exposition; the `+Inf` bucket equals the count of answered and refused requests; refusals are in `+Inf` only |
+
+## Faults {#chaos-faults}
+
+Upstream: 5xx, hang, slow tokens, a stream cut mid-way, wrong or missing usage, `/v1/models` down at start,
+preemption bursts. Clients: disconnects at every stream phase, retry storms, `n` and `best_of`, bursts at the edge of
+a budget. Identity: JWKS down, rotated, clocks four minutes ahead or seven behind. BMC: offline, counter reset,
+power only. HA: a killed replica, a partition between replicas, a rolling reload. PostgreSQL: a restart and slow
+queries, through a relay (there is no Docker on the workstation). Faults combine in one scenario.
+
+## Reading a failure {#chaos-failures}
+
+A run leaves `<workdir>/<scenario>/evidence`: the clients' ledger, the upstream's witness of every hit, the
+spend, budget and fluids reports at the end, and the gateway log. A broken invariant is reduced to a deterministic
+test in the gateway before anything is claimed: first say whether the failure value is wrong or the check is.
+Several early failures of the campaign were the check's: a Retry-After capped at an hour when a budget refusal
+rightly names the time to the period's end; a power-only BMC the fake made inconsistent; a client that cancelled
+while the answer arrived; a fake upstream that ignored vLLM's priority and so served the owners equally; and a
+token "signed with a removed key" answered 200, which was the verifier's documented refetch bound
+(`min_refresh`, default one minute: until the key set is refetched, a removed key still verifies what it signed, and
+tokens of the new key are refused). With `min_refresh = "5s"` a deterministic test, at the library level and against
+the gateway binary, shows the removed key refused after the refetch.
+
+## Behaviours the campaign confirmed {#chaos-observed}
+
+These are documented gateway behaviours that the invariants account for, and the verdicts name them when they occur.
+
+- **A replica that cannot reach the pool owner admits at the lowest priority band** (`ha/node.go`, `lowest()`), the band
+  the spare borrower always takes. An owner's request can therefore tie with the borrower's while ownership changes
+  (killed replica, reload, slow PostgreSQL). Invariant 3 counts these requests and does not judge them.
+- **A killed replica loses at most the last second of its accounting queue** (gateway README, durable accounting). The
+  answers a replica served in the 2 seconds before a `SIGKILL` may go unbilled; invariants 2 and 8 allow exactly those,
+  and nothing else.
+- **A stream cut after its `200` ends as a clean EOF**, with no error event and no `[DONE]`; the client keeps what it
+  received. Reported as an observation under invariant 6.
+- **A request that failed upstream is counted in `requests` with zero tokens and zero cost.**
+- **An upstream's own 503 is passed through without `Retry-After`.**
+
+## Key rotation: an exposure to know {#chaos-keys}
+
+The gateway refetches an issuer's key set only when a token its held keys cannot verify arrives, and at most once per
+`min_refresh` (default **1 minute**, minimum **5 seconds**; `jwt` and `sso` blocks). A key **removed** from the
+issuer's JWKS is therefore still accepted for the tokens it signed until the next refetch, and tokens of the new key are
+refused (401) in the meantime. `llmchaos` showed it (scenario `idp-jwks-rotated`) and two deterministic tests confirm that
+the removed key is refused once the refetch has happened. **An operator handling a compromised signing key should
+restart the gateway or lower `min_refresh` (to 5 s) before rotating**, and treat tokens already signed as valid until
+they expire or the refetch happens.
+
+## What it does not exercise {#chaos-limits}
+
+The figures of a closed month (the gateway's clock cannot be moved from outside, so the closed month is empty),
+soft-budget alert delivery, the gateway's goroutines (no pprof is exposed), and a PostgreSQL restart by the server
+itself (the relay resets connections). The PostgreSQL and HA scenarios, `migrate-users` and the month close run only in
+the repository's CI, against both pinned gateway releases, and fail the job when an invariant breaks, when a
+scenario sent nothing, or when one was skipped.
