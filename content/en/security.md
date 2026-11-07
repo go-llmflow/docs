@@ -231,6 +231,50 @@ stream is complete only when the reader finds the final usage in it.
 Also in v0.37.1, `check-config` refuses a `federation` block on a gateway that serves more than one model
 (see [Being a node of a peer dispatcher]({{< relref "shared-purchase.md" >}}#ilaas-federation)).
 
+## Fixes in v0.38.0: a third-party audit of v0.37.1 (breaking) {#v0380}
+
+An audit by a third party of v0.37.1, all fixed in v0.38.0, each with a test that failed before.
+
+1. **HIGH: a token's institution is its name's scope.** An issuer or provider with an `accept` on
+   `schac_home_organization` filtered on the claim and took the name scopes from the same values, but
+   nothing tied the two: a token of univ-d.fr's IdP stating `schac_home_organization = univ-c.fr` (or
+   eve@univ-e.fr stating it) passed the filter, and a role map on that claim gave it univ-c.fr's team.
+   Now the scope of the person's name must equal a value of the claim, and that value must be one `accept`
+   lists; otherwise the login is refused (403 at SSO) or the token gets no key (JWT): no team, no role.
+   go-authn/saml v0.6.0 and authn-bridge v0.23.9 close the other half: the bridge no longer releases a
+   `schacHomeOrganization` that is not one of its IdP's scopes.
+2. **MEDIUM: `POST /admin/users` refuses a bare name** once a domain is configured, to the proxy admin too
+   (unless `legacy_unscoped_names` is on). Start refuses to run with a bare stored user once accounts are
+   migrated, so one organisation admin could stop the next restart for every institution.
+3. **MEDIUM: an organisation admin creates only names in its institutions' domains.** A person
+   pre-created in another institution's domain was never managed by that institution's SCIM and was
+   refused by its restricted SSO. A proxy admin is unrestricted. A user with no role and no link is also
+   refused without `adopt`, now tested.
+4. **MEDIUM: a refused request costs no guard-model call.** The pool slot, the spare check included, is
+   taken before the pre-call guardrails, so a spare-only borrower on a full pool is refused 429 without
+   a guard call; the slot is held while the guard judges. A guard call also runs at the priority of the
+   request it judges (its band), no longer at 0 ahead of the owners' work.
+5. **LOW.** The saturation fallback takes its slot through the same test as the first one. Fair share
+   counts every choice: the in-flight estimate is the prompt plus `max_tokens` times the larger of `n`
+   and `best_of` (47 tokens for `n` = 4 where the estimate of one choice plus three more was 76).
+   `federation` no longer requires `borrow = "spare"`
+   (see [Being a node of a peer dispatcher]({{< relref "shared-purchase.md" >}}#ilaas-federation)).
+   Global policies (guardrails, budgets, rate limits applying to the whole gateway) are documented
+   by design and unchanged.
+
+CI: GitHub Actions are pinned by commit SHA, govulncheck is pinned, and the Renovate preset no longer
+auto-merges v0 minors.
+
+**Upgrade notes (this is a MINOR below v1, so breaking).**
+
+- **Federation proxies.** Tokens and logins that carry an unscoped name, or a name whose scope is not the
+  institution claim, are refused once the provider or issuer has an `accept` on
+  `schac_home_organization`. Make the proxy release `eduperson_principal_name` or `voperson_id` with the
+  institution's scope. See [Identity]({{< relref "identity.md" >}}#multi-idp).
+- **Admin user creation.** `POST /admin/users` with a bare name, or by an organisation admin for another
+  institution's domain, is refused. Use scoped names (`migrate-users` for the stored ones), or a proxy
+  admin.
+
 ## Security fixes in v0.18.1 {#v0181}
 
 Not part of the 2026-10-26 audit above: two defects of v0.18.0 found by a **post-merge

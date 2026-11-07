@@ -64,6 +64,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.33.0](https://github.com/go-llmflow/gateway/releases/tag/v0.33.0) | **a power-only BMC is metered** (go-redfish v0.2.0): the trapezoid of its power samples, no interpolation across a gap, a counter reset never billed, and the overhead's source (counter, integrated power, factor) reported per month and pool. See [The energy beyond the GPUs]({{< relref "shared-purchase.md" >}}#node-energy) |
 | [v0.37.0](https://github.com/go-llmflow/gateway/releases/tag/v0.37.0) | **a peer dispatcher as one node** (`federation` block): a prefix that serves the inference API to one organisation's keys, and a key-less `GET <prefix>/metrics` with vLLM's time-to-first-token histogram of its own requests, +Inf for every refusal, read by aristote-dispatcher's `least_busy` strategy. See [Being a node of a peer dispatcher]({{< relref "shared-purchase.md" >}}#ilaas-federation) |
 | [v0.37.1](https://github.com/go-llmflow/gateway/releases/tag/v0.37.1) | **patch**: the Bedrock stream converter and the usage tracker no longer disagree (issue #157: counts that overflow when summed, then a `usAge` key); the converter now feeds the tracker itself instead of copying its rules. `check-config` now **refuses a `federation` block on a gateway serving more than one model**: run one gateway per model. See [Fix in v0.37.1]({{< relref "security.md" >}}#v0371) and [Being a node of a peer dispatcher]({{< relref "shared-purchase.md" >}}#ilaas-federation) |
+| [v0.38.0](https://github.com/go-llmflow/gateway/releases/tag/v0.38.0) | **security, breaking** (a third-party audit of v0.37.1): with an `accept` on `schac_home_organization` the scope of the person's name must equal a value of the claim that `accept` lists, else the token or login is refused; `POST /admin/users` refuses a bare name once a domain is configured and an organisation admin creates only names of its own institutions' domains; a refused request costs no guard-model call and guard calls run in the caller's priority band; the saturation fallback and fair share are corrected. **A federation proxy's tokens and logins need a scoped name.** See [Fixes in v0.38.0]({{< relref "security.md" >}}#v0380) and [Several identity providers]({{< relref "identity.md" >}}#multi-idp) |
 
 **Which tag to take.** v0.13.1 was published **after** v0.14.0, and on a commit that
 already contains the HA code of v0.14.0 (it descends from it); v0.14.1 is the very same
@@ -187,7 +188,7 @@ token.
 | --- | --- |
 | `GET /admin/whoami` | the caller and their roles |
 | `GET /admin/login`, `/admin/callback`, `/admin/session`; `POST /admin/logout` | administrator single sign-on (see [Identity]({{< relref "identity.md" >}}#sso)) |
-| `GET`, `POST /admin/users`; `DELETE /admin/users/{name}`; `.../tokens`; `.../roles` | users, their tokens and their roles (each binding shows its `provenance` since v0.18.2: see [Security]({{< relref "security.md" >}}#v0182)); names may contain `@` and `+` |
+| `GET`, `POST /admin/users`; `DELETE /admin/users/{name}`; `.../tokens`; `.../roles` | users, their tokens and their roles (each binding shows its `provenance` since v0.18.2: see [Security]({{< relref "security.md" >}}#v0182)); names may contain `@` and `+`; **since v0.38.0 `POST` refuses a bare name once a domain is configured, and an organisation admin creates only names in the domains of its own organisations' institutions** (a proxy admin is unrestricted): see [Security]({{< relref "security.md" >}}#v0380) |
 | `GET`, `PUT /admin/allowlists` | IP allowlists on an organisation, a team or a key |
 | `POST /admin/keys/{id}/rotate`; `PUT /admin/keys/{id}/rotation` | rotate a key's secret now, or on a schedule |
 | `/scim/v2` | SCIM 2.0 provisioning, with a `scim` block |
@@ -377,6 +378,9 @@ model "llama-70b" {
 **`"unavailable"` (the default): an outage.** Before anything has reached the client,
 a request moves to the next fallback when no upstream of the group took it, or when
 vLLM answered 429 or 503.
+
+Since v0.38.0 the fallback slot is taken through the same test as the first one: an organisation that may
+borrow only spare capacity is not admitted into a fallback pool whose vLLM queue is saturated.
 
 **`"saturated"` (since v0.11.0, [issue #58](https://github.com/go-llmflow/gateway/issues/58)).**
 Measured on 2026-10-26, a vLLM above its `--max-num-seqs` does not refuse: it queues the

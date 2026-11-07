@@ -240,6 +240,28 @@ jwt "partners" {
   (`eduperson_principal_name`, eduPersonPrincipalName: single-valued and `caseIgnoreMatch` in the eduPerson
   schema, the scope being the domain that issued it; or `voperson_id`); names are compared in ASCII lower
   case, by go-authn/oidc `ScopedName` (v0.7.0 since gateway v0.36.1).
+- **With an `accept` on `schac_home_organization`, a token's institution is its name's scope** (v0.38.0,
+  **breaking**). The claim filtered the login and the name's scope was checked against the issuer's
+  domains, but nothing tied the two: a token of univ-d.fr's IdP stating `schac_home_organization =
+  univ-c.fr` passed the filter, and a role map on that claim gave it univ-c.fr's team. Now the scope of
+  the person's name must **equal** a value of the claim, and that value must be one `accept` lists;
+  otherwise the login is refused (403) or the token gets no key (JWT): no team, no role. This holds for
+  `sso` providers and `jwt` issuers. **Upgrade note:** an unscoped name takes the issuer's default domain as
+  its scope, so the tokens and logins of a **federation proxy** (eduGAIN, MyAccessID, Renater) must carry a
+  scoped name for the person's institution (`eduperson_principal_name` or `voperson_id`); a proxy
+  that releases a bare `preferred_username` now has every person refused. Check the claims your proxy
+  releases before upgrading. The other half is on the IdP side: go-authn/saml v0.6.0 and
+  [go-authn/bridge](https://github.com/go-authn/bridge) v0.23.9 no longer release a
+  `schacHomeOrganization` that is not one of the scopes of the IdP that stated it. See
+  [Fixes in v0.38.0]({{< relref "security.md" >}}#v0380).
+- **Creating users by the admin API** (`POST /admin/users`, v0.38.0, **breaking**). Once a domain is
+  configured a name is `local@domain`, and a bare name is refused, to the proxy admin too (unless
+  `legacy_unscoped_names` is on): the gateway refuses to start with a bare stored user once accounts are
+  migrated, so one organisation admin could otherwise stop the next restart for every institution. An
+  **organisation admin** creates only names in the domains of the providers and issuers bound to its own
+  organisations (and of the SCIM client, for the organisations of the teams its groups map to). A
+  **proxy admin** is unrestricted. An automation that created bare names, or names of another institution
+  with an organisation admin's token, now gets a refusal.
 - **Migration: `migrate-users`** (v0.32.0). Accounts that predate scoped names are bare (`alice`). The
   institution they belong to sets `domain = "example.org"` on its `sso` provider, `jwt` block and `scim`
   block (only one issuer may carry it, since unscoped names belong to one institution; the others list
