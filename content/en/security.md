@@ -213,6 +213,20 @@ U+017F (long s) an "s". The gateway now compares names with go-authn/oidc v0.7.0
 
 The dependency go-authn/oidc moves from v0.6.0 to v0.7.0.
 
+## Fix in v0.37.1: a Bedrock stream that was complete but whose usage was not read (#157) {#v0371}
+
+A patch release. The fuzz smoke of `FuzzBedrockStream` failed with "complete, but the usage was not read".
+The stream converter took a `message_delta` as the final usage when each count was non-negative, and the
+usage tracker then refused the same delta when the counts, each valid, added up past an int64
+(`input_tokens` 9223372036854775807 and a `cache_read_input_tokens` of 1): a stream reported complete with
+no usage read. The charge was already safe (the worst case is held), but the two disagreed. They now decide
+with one function, `openai.ValidMessagesCounts` (each count in [0, 2^60], so the sums cannot overflow). The
+input is a committed fuzz seed (`gateway/testdata/fuzz/FuzzBedrockStream/usage_sum_overflow`), and the
+fuzz-smoke CI job now uploads the failing corpus entry as an artifact.
+
+Also in v0.37.1, `check-config` refuses a `federation` block on a gateway that serves more than one model
+(see [Being a node of a peer dispatcher]({{< relref "shared-purchase.md" >}}#ilaas-federation)).
+
 ## Security fixes in v0.18.1 {#v0181}
 
 Not part of the 2026-10-26 audit above: two defects of v0.18.0 found by a **post-merge
