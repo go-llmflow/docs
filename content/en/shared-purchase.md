@@ -286,8 +286,12 @@ In the dispatcher the node is `url = https://llm.example.org/fed/ilaas` and a ke
   block on a gateway that serves more than one `model`**, naming them. Run one gateway per model for a peer
   that needs several.
 - `check-config` refuses a malformed, reserved or overlapping prefix, an unknown `org`, an `org` that
-  holds a share of a pool a model uses, and an empty or `/0` `metrics_networks`. Use `borrow = "spare"` on
-  the lent pool: with `borrow = "all"` the peer queues at vLLM instead of being refused.
+  holds a share of a pool a model uses, and an empty or `/0` `metrics_networks`. `borrow = "spare"` on the
+  lent pool is **recommended, not required** (since v0.38.0): with `borrow = "all"` the peer's requests
+  queue behind every owner at the lowest priority and the time to the first byte grows with the queue,
+  a signal a least-busy strategy can read, only later than a +Inf refusal. A site may prefer queueing
+  to refusing; what the share check enforces is that the peer holds no share, so it never gets reserved
+  capacity.
 
 The example is the end of `examples/b300-ilaas.hcl`.
 
