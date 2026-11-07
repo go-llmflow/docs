@@ -62,6 +62,38 @@ token "signed with a removed key" answered 200, which was the verifier's documen
 tokens of the new key are refused). With `min_refresh = "5s"` a deterministic test, at the library level and against
 the gateway binary, shows the removed key refused after the refetch.
 
+## The campaign in CI {#chaos-ci}
+
+The repository's CI runs all 31 scenarios with seeds 1 to 5 against **gateway v0.37.1 and v0.38.0**, as six shards per
+release on GitHub runners (each with its own PostgreSQL 17), then merges the shards and fails on a failed invariant, a
+run that broke, was skipped or sent nothing, an N/A a scenario is not entitled to, and any scenario and seed that no
+shard ran. Result of the run of 2026-11-07 (155 runs per release, both releases identical):
+
+| invariant | PASS | FAIL | N/A |
+|---|---|---|---|
+| 1 budgets | 145 | 0 | 10 |
+| 2 attribution | 155 | 0 | 0 |
+| 3 spare borrower and shares | 155 | 0 | 0 |
+| 4 fluids | 120 | 0 | 35 |
+| 5 closed month | 10 | 0 | 145 |
+| 6 refusals | 155 | 0 | 0 |
+| 7 leaks | 155 | 0 | 0 |
+| 8 HA spend | 30 | 0 | 125 |
+| 9 federation metrics | 110 | 0 | 45 |
+
+`llmchaos diff` finds **no verdict that differs** between the two releases. That is a statement about what the
+scenarios exercise: the v0.38.0 fixes that no scenario reaches (an organisation administrator creating users, the spare
+check before the guards, the saturation fallback's spare check, `n` and `best_of` in fair share) cannot show in it. The
+one fix a scenario does reach is the name scope of a federation token: v0.38.0 refuses a federation token whose name is
+unscoped (401), which v0.37.1 accepted, and the first campaign showed it as 15 differing verdicts until the harness
+minted a scoped name (`carol@univ-c.example`) as the release notes require.
+
+Not a gateway verdict, the first runs also found three defects of the harness: a fault lifted twice (a replica started a
+second time, the first process left running), the request count of a client that left before the upstream saw its
+request, and a port taken between its choice and the gateway's bind. All three are fixed and have tests; an unreproduced
+failure of `ha-kill-during-pg-restart` (seed 2, v0.38.0: four answered requests not billed) happened while those stray
+replicas shared the database, and did not recur in ten later runs.
+
 ## Behaviours the campaign confirmed {#chaos-observed}
 
 These are documented gateway behaviours that the invariants account for, and the verdicts name them when they occur.
@@ -89,7 +121,7 @@ they expire or the refetch happens.
 
 ## What it does not exercise {#chaos-limits}
 
-The figures of a closed month (the gateway's clock cannot be moved from outside, so the closed month is empty),
+What invariant 5 judges is **immutability only**: the figures of a closed month (the gateway's clock cannot be moved from outside, so the closed month is empty, and a month that holds the campaign's traffic cannot be closed),
 soft-budget alert delivery, the gateway's goroutines (no pprof is exposed), and a PostgreSQL restart by the server
 itself (the relay resets connections). The PostgreSQL and HA scenarios, `migrate-users` and the month close run only in
 the repository's CI, against both pinned gateway releases, and fail the job when an invariant breaks, when a
