@@ -280,8 +280,11 @@ In the dispatcher the node is `url = https://llm.example.org/fed/ilaas` and a ke
   of a window was refused the dispatcher's p95 is +Inf and it sends the traffic elsewhere. After a
   window without traffic its diff is zero in every bucket and the node scores the first bound (0.001,
   not -1), so it is tried again. Before any request the exposition has no bucket line.
-- With several models the dispatcher merges the lines bucket by bucket and the last model by name
-  wins: give the peer one model per node when its score must mean something.
+- **One model** (since v0.37.1). The dispatcher merges the lines of all models bucket by bucket, the last
+  model by name winning, and a mount answers for every model of the gateway (a fallback included), so with
+  several the node's score would be that of one of them. `check-config` therefore **refuses a `federation`
+  block on a gateway that serves more than one `model`**, naming them. Run one gateway per model for a peer
+  that needs several.
 - `check-config` refuses a malformed, reserved or overlapping prefix, an unknown `org`, an `org` that
   holds a share of a pool a model uses, and an empty or `/0` `metrics_networks`. Use `borrow = "spare"` on
   the lent pool: with `borrow = "all"` the peer queues at vLLM instead of being refused.
