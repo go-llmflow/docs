@@ -609,6 +609,9 @@ Without `max_model_len` the gateway reads it from each upstream's `GET /v1/model
 health check and sends a held request only to an upstream whose length it has read since
 that upstream last became healthy. **Set `max_model_len` on every model a budget can apply
 to**, so it is never learned late, for example from a Slurm instance that just joined.
+Without it, **right after start-up a request under a budget gets a 503** (`the context
+length of this model is unknown`) until `/v1/models` has been read: a refusal, never an
+admission, so a client retries.
 `check-config` bounds every price to 1e6 per million tokens (so the integers cannot
 overflow) and refuses a context beta wider than `context_window`: with
 `anthropic_betas = ["context-1m-2025-08-07"]` or `["*"]` with `context_window = 200000`,
