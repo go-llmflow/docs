@@ -116,10 +116,13 @@ after a PostgreSQL outage, where v0.9.0 lost all 21; with the real binary, 20 re
 were spooled while PostgreSQL was unreachable, the gateway was killed with SIGKILL
 and restarted, and 21 of 21 records were stored, with 21 distinct ids and no double
 billing. This is not a promise of zero loss: a record still in the in-memory queue
-when the process dies (about the last second of traffic) is lost, and past
-`spool_max_bytes` (256 MiB per process by default) a batch the store refuses is lost
-too, counted in `llmflow_accounting_failed_total` and alerted as
-`accounting_records_lost`. `store.spool_dir` is **mandatory** with the postgres store
+when the process dies (about the last second of traffic, whatever the store does
+since v0.38.1; with v0.10.0 to v0.38.0 a store that hung made it the length of the
+stall, [#165](#v0381)) is lost. When `spool_max_bytes` (256 MiB per
+process by default) is reached or the disk refuses the write, records are held in memory
+only, up to 100,000 (v0.38.1), alerted as `accounting_records_lost`, and a request a
+budget governs is refused with 503 `spool_full`; past the 100,000 they are lost, counted
+in `llmflow_accounting_failed_total`. `store.spool_dir` is **mandatory** with the postgres store
 since v0.10.0; see [Upgrading to v0.10.0]({{< relref "gateway.md" >}}#upgrading-v0100).
 
 ## Dependencies {#dependencies}
@@ -136,8 +139,9 @@ v0.2.0, scim v0.1.1, s3 v0.2.1, pii v0.2.1 (pii v0.2.2 since gateway v0.36.0).
 ## Residual risks {#residual}
 
 1. ~~Usage served during a store outage is not recorded~~ **fixed in v0.10.0**
-   (see above). What remains is the last second of in-memory queue on a crash, and
-   a full spool.
+   (see above). What remains is the last second of in-memory queue on a crash
+   (since v0.38.1 whatever the store does), and a full spool with more than 100,000
+   records pending.
 2. SCIM adopts an existing gateway user with the same `userName`, and re-enables it
    if a proxy admin had disabled it by hand. The identity provider is already
    trusted for usernames through SSO.
@@ -274,6 +278,21 @@ auto-merges v0 minors.
 - **Admin user creation.** `POST /admin/users` with a bare name, or by an organisation admin for another
   institution's domain, is refused. Use scoped names (`migrate-users` for the stored ones), or a proxy
   admin.
+
+## Fix in v0.38.1: spooling no longer waits on the store (#165) {#v0381}
+
+A patch release. The chaos campaign found (see [Chaos]({{< relref "chaos.md" >}}#chaos-recorder)) that the
+accounting recorder was one goroutine that spooled a batch and then inserted it into PostgreSQL with a 10 s
+timeout. While PostgreSQL hung, the records of requests answered meanwhile waited in memory, outside the
+spool, and a `SIGKILL` lost them: the documented bound of about one second of traffic was in fact the length of
+the stall.
+
+Now one goroutine appends to the spool and fsyncs it, and **never waits on the store**; another ships what is
+spooled. The bound holds whatever the store does. Exactly-once is unchanged: a record is stored at most once,
+keyed by its id (the request id). When the spool is full or cannot be written, the recorder is degraded: records
+are held in memory only, up to 100,000, and `accounting_records_lost` is alerted at once; a request that a
+budget governs is refused with `503 spool_full` (fail closed) rather than answered unrecorded; the spool accepts
+records again as soon as it is emptied. See [Durable accounting]({{< relref "gateway.md" >}}#upgrading-v0100).
 
 ## Security fixes in v0.18.1 {#v0181}
 
