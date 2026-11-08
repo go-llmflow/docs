@@ -81,18 +81,39 @@ shard ran. Result of the run of 2026-11-07 (155 runs per release, both releases 
 | 8 HA spend | 30 | 0 | 125 |
 | 9 federation metrics | 110 | 0 | 45 |
 
-`llmchaos diff` finds **no verdict that differs** between the two releases. That is a statement about what the
-scenarios exercise: the v0.38.0 fixes that no scenario reaches (an organisation administrator creating users, the spare
-check before the guards, the saturation fallback's spare check, `n` and `best_of` in fair share) cannot show in it. The
-one fix a scenario does reach is the name scope of a federation token: v0.38.0 refuses a federation token whose name is
-unscoped (401), which v0.37.1 accepted, and the first campaign showed it as 15 differing verdicts until the harness
-minted a scoped name (`carol@univ-c.example`) as the release notes require.
+Without a control, "no difference between two releases" would be a statement about what the scenarios reach, not about
+the releases. So a scenario can be a **positive control**: it must fail on the releases before a fix and pass from it on,
+and `llmchaos diff` between the two releases must list exactly the controls.
 
-Not a gateway verdict, the first runs also found three defects of the harness: a fault lifted twice (a replica started a
-second time, the first process left running), the request count of a client that left before the upstream saw its
-request, and a port taken between its choice and the gateway's bind. All three are fixed and have tests; an unreproduced
-failure of `ha-kill-during-pg-restart` (seed 2, v0.38.0: four answered requests not billed) happened while those stray
-replicas shared the database, and did not recur in ten later runs.
+| control (scenario) | v0.38.0 fix it detects | v0.37.1 | v0.38.0 |
+|---|---|---|---|
+| `idp-schac-spoof` | a token's institution is its name's scope: a federation token named `eve@univ-e.example` that states the accepted `schac_home_organization` is refused | accepted (200, or 429 when the budget was spent) | refused, 401 |
+
+`diff` of the run of 2026-11-08 lists 10 differences, all of this scenario (invariant 6, the verdict, and invariant 9,
+where the accepted request is one the dispatcher counted). A control token scoped to its institution is accepted on both
+releases, so the probe cannot pass by refusing everything. **The other four fixes still have no control**: an
+organisation administrator creating a bare or foreign-domain user, the spare check before the guards (a refused spare
+request must cost no guard call), the saturation fallback's spare check, and `n` and `best_of` in the borrower's slots.
+The campaign cannot see them, and a release that regressed on one would not fail it.
+
+Before the control, the first campaign had already shown the schac fix indirectly: v0.38.0 refuses a federation token
+whose name is unscoped, which v0.37.1 accepted, and it appeared as 15 differing verdicts until the harness minted a
+scoped name (`carol@univ-c.example`) as the release notes require.
+
+Not a gateway verdict, the first runs also found defects of the harness, all fixed and tested: a fault lifted twice (a
+replica started a second time, the first process left running), the request count of a client that left before the
+upstream saw it (allowed only for a request the client abandoned and the fake upstream never received), a port taken
+between its choice and the gateway's bind, and a run started across a UTC midnight (the per-day budgets rolled over
+inside it, and the clients legitimately paid more than the limit).
+
+## A gateway finding: records wait in memory while the store hangs {#chaos-recorder}
+
+One run of `ha-kill-during-pg-restart` (seed 2, gateway v0.38.0) left four answered requests unbilled. It did not recur,
+but a test shows it can happen: the accounting recorder is a single goroutine, and while the store hangs (PostgreSQL
+restarting) it is blocked inside an insert with a 10 s timeout, so records of requests answered meanwhile are in memory,
+not in the spool, and a SIGKILL loses them. The documented bound is about one second of traffic; here it is the length of
+the stall. Reproducer and details: [go-llmflow/gateway#165](https://github.com/go-llmflow/gateway/issues/165). Not fixed
+in this release.
 
 ## Behaviours the campaign confirmed {#chaos-observed}
 
