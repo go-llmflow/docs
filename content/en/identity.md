@@ -262,6 +262,27 @@ jwt "partners" {
   organisations (and of the SCIM client, for the organisations of the teams its groups map to). A
   **proxy admin** is unrestricted. An automation that created bare names, or names of another institution
   with an organisation admin's token, now gets a refusal.
+- **A person has one institution: the scope of their name** (v0.39.0, **breaking**). The v0.38.0 tie
+  compared the name's scope with the values the token states, but a team or role map on
+  `schac_home_organization` still matched any stated value (a token stating `[univ-d.fr, univ-c.fr]`
+  got C's team), the tie read `schacHomeOrganization` where the map read `schac_home_organization`, and
+  an issuer with `domains` and no `accept` had no tie. Now one function gives the person's institution,
+  the scope of their name (checked against what the issuer may assert), and every mapping keys on it:
+  a `map` or `role` on the institution claim holds only for that institution, never for a raw claim
+  value, and an `accept` on it must list it. The claim itself, in either spelling (the configuration has
+  one canonical name, `schac_home_organization`), is only cross-checked: a token that states
+  institutions among which its name's scope is not is refused. The tie applies whenever an accept or a
+  mapping uses the institution claim, with or without `accept`; a token with no scoped name is then
+  refused.
+- **A domain has one owner** (v0.39.0, **breaking**). `POST /admin/users` let an
+  organisation admin create people in every domain of a SCIM client or provider that its organisation
+  shared with others. An organisation now owns a domain only by `org { domains = ["univ-a.fr"] }`, or
+  through an issuer or provider bound to it alone, or a SCIM client all of whose groups map to its teams.
+  A **shared** SCIM client or `sso` provider owns nothing, the legacy unrestricted `sso` block owns
+  nothing, and a domain claimed by two organisations is refused at load. **Upgrade note:** with a SCIM
+  client or an `sso` provider shared by several organisations, claim each domain with
+  `org { domains = [...] }`; until then their administrators cannot create the people of those domains
+  (the proxy admin still can). See [Fixes in v0.39.0]({{< relref "security.md" >}}#v0390).
 - **Migration: `migrate-users`** (v0.32.0). Accounts that predate scoped names are bare (`alice`). The
   institution they belong to sets `domain = "example.org"` on its `sso` provider, `jwt` block and `scim`
   block (only one issuer may carry it, since unscoped names belong to one institution; the others list
