@@ -66,6 +66,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.37.1](https://github.com/go-llmflow/gateway/releases/tag/v0.37.1) | **patch**: the Bedrock stream converter and the usage tracker no longer disagree (issue #157: counts that overflow when summed, then a `usAge` key); the converter now feeds the tracker itself instead of copying its rules. `check-config` now **refuses a `federation` block on a gateway serving more than one model**: run one gateway per model. See [Fix in v0.37.1]({{< relref "security.md" >}}#v0371) and [Being a node of a peer dispatcher]({{< relref "shared-purchase.md" >}}#ilaas-federation) |
 | [v0.38.0](https://github.com/go-llmflow/gateway/releases/tag/v0.38.0) | **security, breaking** (a third-party audit of v0.37.1): with an `accept` on `schac_home_organization` the scope of the person's name must equal a value of the claim that `accept` lists, else the token or login is refused; `POST /admin/users` refuses a bare name once a domain is configured and an organisation admin creates only names of its own institutions' domains; a refused request costs no guard-model call and guard calls run in the caller's priority band; the saturation fallback and fair share are corrected. **A federation proxy's tokens and logins need a scoped name.** See [Fixes in v0.38.0]({{< relref "security.md" >}}#v0380) and [Several identity providers]({{< relref "identity.md" >}}#multi-idp) |
 | [v0.38.1](https://github.com/go-llmflow/gateway/releases/tag/v0.38.1) | **patch**: accounting's spooling no longer waits on the store (issue #165). One goroutine spools (fsync) and another ships to PostgreSQL, so while the store hangs the records of requests answered meanwhile are in the spool, not in memory, and a `SIGKILL` no longer loses them: the documented bound of about 1 s holds. Exactly-once is unchanged. A full or unwritable spool holds records in memory (up to 100,000), alerts `accounting_records_lost` and refuses a budget-governed request with 503 `spool_full`. See [Fix in v0.38.1]({{< relref "security.md" >}}#v0381) |
+| [v0.39.0](https://github.com/go-llmflow/gateway/releases/tag/v0.39.0) | **security, breaking** (a fourth audit): a person has one institution, **the scope of their name**, and every `map`, `role` and `accept` on `schac_home_organization` keys on it, never on a raw claim value (with or without `accept`); **an organisation owns a domain only explicitly** (`org { domains = [...] }`, or a source bound to it alone), a shared SCIM client or SSO provider owns nothing, and a domain claimed twice is refused at load; a fluids counter decrease is a candidate confirmed by the next reading, and an interval's energy is capped by the new `fluids { max_gpu_watts }`; a request with `n` or `best_of` holds n slots; the accounting spool degrades fairly (503 `spool_org_share`, 503 `spool_full`). **Upgrade: with a SCIM client or an `sso` provider shared by several organisations, claim each domain with `org { domains }`.** See [Fixes in v0.39.0]({{< relref "security.md" >}}#v0390) |
 
 **Which tag to take.** v0.13.1 was published **after** v0.14.0, and on a commit that
 already contains the HA code of v0.14.0 (it descends from it); v0.14.1 is the very same
@@ -259,11 +260,12 @@ model "llama-3.3-70b" {
 
 | Block or attribute | Meaning |
 | --- | --- |
-| `org "<name>" { share, team "<name>" {} ... }` | an organisation (institution) with the fraction of every pool reserved for it (sum at most 1) and the teams declared under it; team names are global |
+| `org "<name>" { share, domains, team "<name>" {} ... }` | an organisation (institution) with the fraction of every pool reserved for it (sum at most 1) and the teams declared under it; team names are global. **`domains = ["univ-a.fr", ...]`** (since v0.39.0) lists the identity domains the organisation owns: its administrators may create people only in them. A domain is owned only by this attribute, or by an issuer, provider or SCIM client bound to this organisation alone; a shared source owns nothing, and a domain claimed by two organisations is refused at load. See [Identity]({{< relref "identity.md" >}}#multi-idp) |
 | `pool "<name>" { capacity }` | `C`, the sustainable concurrency of the pool (1 to 1048576) |
 | `model "<name>" { ... }` | client model name; `upstream_model`, `pool`, `class` (`interactive` or `batch`), `key_file`, `cost { input_per_mtok, output_per_mtok, cached_per_mtok }` in GPU-hours per million tokens, and `upstream "<name>" { base_url, key_file }` blocks |
 | `store { ... }` | `kind` (`memory` or `postgres`), `dsn_file`, `spool_dir` (**required with postgres**, see [Upgrading to v0.10.0](#upgrading-v0100)), `spool_max_bytes` (default 256 MiB), `fail_closed` (default true), `queue_size`, `batch_size` |
 | `fairshare { half_life }` | usage decay half-life (default `"168h"`) |
+| `fluids { max_gpu_watts }` | since v0.39.0, the highest plausible power of one GPU in watts (default 3000): the energy of one interval is capped at `max_gpu_watts` x 2 x the time since the GPU's baseline, and a capped interval is logged. See [Fluids]({{< relref "decision-reports.md" >}}#fluids) |
 | `limits { ... }`, `health { ... }` | body and header sizes, timeouts, maximum request duration and response size; health-check interval, timeout, cooldown and path |
 | `tags { header, allowed }` | the request header clients may tag requests with, and the allowed tags |
 | `cache_isolation`, `cache_salt_key_file` | prefix-cache tenant scope (`org` default, `team`, `key`, `none`) and the HMAC key file (at least 32 bytes; required unless `none`) |
@@ -1194,6 +1196,13 @@ preempted first. Usage is the **cost actually consumed**, charged when a request
 finishes and decayed with a half-life (the exact exponential, of which Slurm's
 `1 - 0.693/hl` is the first-order expansion).
 
+**`n` and `best_of` hold slots** (since v0.39.0). A request that runs n sequences holds n
+slots: it counts n times in its team's in-flight requests, takes n borrowed slots, runs in the worst
+priority band of the n, and releases them together. A borrower that may borrow only spare capacity
+(`borrow = "spare"`) needs room for all n, or is refused 429 whole. This holds for chat, completions
+and responses. The tokens themselves are not weighted (the ranking charges the consumed cost
+afterwards), nor are tool calls.
+
 vLLM's v1 scheduler keeps waiting requests in a min-heap on
 `(priority, arrival_time)`; when a running request runs out of KV blocks, the
 running request with the largest `(priority, arrival_time)` is preempted; a
@@ -1427,6 +1436,11 @@ Open defects of v0.25.2, as the repository lists them:
    lost (counted in `llmflow_accounting_failed_total`). A record still in the queue
    when the process dies (at most about 1 s of traffic, whatever the store does since
    v0.38.1; before it, a hung store stretched this to the length of the stall) is lost.
+   Since v0.39.0 the spool degrades fairly: past half of `spool_max_bytes`, an organisation
+   holding most of the records not yet stored is refused (503 `spool_org_share`, budgeted requests);
+   the degraded state is cleared only when no record is memory-only any more; and with 100,000
+   memory-only records no request is admitted, budgeted or not (503 `spool_full`), instead of losing
+   unbilled records.
    Everything that reached the spool survives a store outage and a crash. (The README no longer says that budgets count the cost
    only until the next refresh: since v0.17.0 holds and settlement are in PostgreSQL.)
 7. **No TLS** in the gateway: put it behind a TLS proxy. The **admin API shares

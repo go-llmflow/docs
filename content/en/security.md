@@ -294,6 +294,44 @@ are held in memory only, up to 100,000, and `accounting_records_lost` is alerted
 budget governs is refused with `503 spool_full` (fail closed) rather than answered unrecorded; the spool accepts
 records again as soon as it is emptied. See [Durable accounting]({{< relref "gateway.md" >}}#upgrading-v0100).
 
+## Fixes in v0.39.0: a fourth audit (breaking) {#v0390}
+
+All fixed in v0.39.0, each with a test that failed before.
+
+1. **MEDIUM: a person has one institution.** The team and role maps matched any value the token stated,
+   the tie read `schacHomeOrganization` where the map read `schac_home_organization`, and an issuer with
+   `domains` and no `accept` had no tie. Now the institution is **the scope of the person's name**, and
+   every `map`, `role` and `accept` on the institution claim keys on it, never on a raw claim value; the
+   claim has one canonical name in the configuration and is only cross-checked. The tie applies with or
+   without `accept`, and a token with no scoped name is refused.
+2. **MEDIUM: domains have one owner.** An organisation admin could create people in every domain of a SCIM
+   client or provider shared with other organisations. An organisation owns a domain only by
+   `org { domains = [...] }`, a source bound to it alone, or a SCIM client all of whose groups map to its
+   teams; a shared source owns nothing, and a domain claimed twice is refused at load.
+3. **MEDIUM (fluids): a counter glitch is never billed as a reset.** One low reading was taken as a
+   reset, and the next normal one billed the whole lifetime counter in one interval (722 kWh in 60 s). A
+   decrease is now a candidate confirmed by the next reading: back at or above the old baseline, a glitch,
+   discarded; at or above the candidate and below the baseline, a reset, confirmed and billed from the new
+   baseline (the reload's own interval is billed as nothing). An interval's energy per GPU is capped at
+   `fluids { max_gpu_watts }` (default 3000) x 2 x the time since its baseline, and capped and discarded
+   intervals are logged. A 32-bit wrap is a reset.
+4. **LOW: `n` and `best_of` weigh on scheduling.** A request that runs n sequences holds n slots in fair
+   share and admission; a spare-only borrower needs room for all n, or is refused 429 whole.
+5. **LOW: the accounting spool degrades fairly.** Past half its bound, an organisation holding most of
+   the unstored records is refused (503 `spool_org_share`); `degraded` is cleared only when no record is
+   memory-only any more; with 100,000 memory-only records no request is admitted, budgeted or not
+   (503 `spool_full`), instead of losing unbilled records.
+6. **LOW: supply chain.** The CI PostgreSQL image is pinned by digest, and the organisation Renovate
+   presets no longer auto-merge any Go module branch.
+
+**Upgrade notes (this is a MINOR below v1, so breaking).**
+
+- **Shared SCIM clients and SSO providers.** Claim each domain with `org { domains = [...] }`, or the
+  administrators of the organisations sharing the source can no longer create its people (the proxy admin
+  still can). See [Identity]({{< relref "identity.md" >}}#multi-idp).
+- **Federation proxies.** A token whose name has no scope, or whose name's scope is not among the
+  institutions it states, is refused when a mapping or an `accept` uses the institution claim.
+
 ## Security fixes in v0.18.1 {#v0181}
 
 Not part of the 2026-10-26 audit above: two defects of v0.18.0 found by a **post-merge

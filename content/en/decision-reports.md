@@ -27,6 +27,7 @@ fluids {
   w_prefill     = 1          # relative energy of a prefill and a decode token
   w_decode      = 1          #   (a modelling choice: calibrate on your models)
   idle_watts    = 0          # per GPU; energy up to it is idle (0: none)
+  max_gpu_watts = 3000       # per GPU; an interval's energy is capped at this x 2 x its time (v0.39.0)
   interval      = "15s"      # scrape period
   settle        = "1m"       # wait before attributing, so accounting has landed
   period "2026-07" { price_per_kwh = 0.21 }   # per-month override (pue too)
@@ -43,8 +44,14 @@ This configuration, in a complete file, passes `llmflow-gateway check-config` v0
 
 - **Source.** `DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION` is a counter "since the driver was last
   reloaded (in mJ)" (dcgm-exporter's `default-counters.csv`). The gateway turns it into
-  per-interval deltas per GPU. A counter that goes down (a driver reload) counts its new value
-  as the energy since the reload; a failed scrape loses nothing, since the next delta spans
+  per-interval deltas per GPU. **A counter that goes down is a candidate, and the next reading
+  decides** (v0.39.0; before it, one low reading was taken as a reset and the next normal one billed
+  the whole lifetime counter in one interval): back at or above the old baseline, it was a glitch,
+  discarded, and its energy is billed once; at or above the candidate and below the baseline, a driver
+  reload, confirmed, billed from the new baseline (the reload's own interval is unknown and billed as
+  nothing). A 32-bit wrap is a reset, not a huge delta. **The energy of one interval is capped** at
+  `max_gpu_watts` (default 3000 W per GPU) x 2 x the time since the GPU's baseline; capped and
+  discarded intervals are logged. A failed scrape loses nothing, since the next delta spans
   the gap; a GPU seen for the first time only sets a baseline. **Energy used while the gateway
   is down is not counted.** The URL follows the rules of `base_url` (no credentials, no query),
   is read with a timeout and a bounded body, and **follows no redirect**. Several upstreams on
