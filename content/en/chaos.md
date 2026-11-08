@@ -83,18 +83,33 @@ shard ran. Result of the run of 2026-11-07 (155 runs per release, both releases 
 
 Without a control, "no difference between two releases" would be a statement about what the scenarios reach, not about
 the releases. So a scenario can be a **positive control**: it must fail on the releases before a fix and pass from it on,
-and `llmchaos diff` between the two releases must list exactly the controls.
+and `llmchaos diff` between two releases must list exactly the controls.
 
-| control (scenario) | v0.38.0 fix it detects | v0.37.1 | v0.38.0 |
-|---|---|---|---|
-| `idp-schac-spoof` | a token's institution is its name's scope: a federation token named `eve@univ-e.example` that states the accepted `schac_home_organization` is refused | accepted (200, or 429 when the budget was spent) | refused, 401 |
+| control (scenario) | fix it detects | v0.37.1 | v0.38.0 | v0.38.1 |
+|---|---|---|---|---|
+| `idp-schac-spoof` (v0.38.0) | a token's institution is its name's scope: a federation token named `eve@univ-e.example` that states the accepted `schac_home_organization` is refused | accepted | refused, 401 | refused |
+| `control-admin-users` (v0.38.0) | `POST /admin/users` is bound to the institutions: the org admin of one institution creating a bare name, or a name in another institution's domain, is refused 400, the gateway restarts, and a name in its own domain is created (control) | created (201) | refused | refused |
+| `control-spare-guard` (v0.38.0) | a request refused for lack of spare capacity costs no guard-model call, and a guard call never runs at priority 0: with a guarded spare-only borrower and the owners keeping the pool full, the guard model's calls are counted by a fake guard | about 1 000 to 2 000 guard calls per run, all at priority 0, for 90 to 100 admitted requests | 2 per admitted request, none at priority 0 | same |
+| `control-fallback-spare` (v0.38.0) | the saturation fallback takes its slot through the same spare test: a borrower that holds a share of the main pool too small to reserve a slot, a never-full fallback pool whose vLLM queue is saturated | all 28 borrower requests of the run moved into the saturated fallback pool | none moved | same |
+| `control-n-slots` (v0.38.0) | `n` and `best_of` are counted in fair share: requests with n = best_of = 4, max_tokens 64, and the gateway's in-flight token gauge per request in flight | about 113 tokens (one choice) | at least 256 (four) | same |
+| `control-recorder-stall` (v0.38.1, gateway#165) | the accounting recorder no longer waits on the store: PostgreSQL hangs for 5.5 s (the relay accepts and answers nothing), requests are answered meanwhile, the only replica is SIGKILLed 4.5 s into the hang, before the 10 s insert timeout, and restarted: every answered request must be billed exactly once, but the last second before the kill | about 60 answers of 370 lost | same | none lost |
 
-`diff` of the run of 2026-11-08 lists 10 differences, all of this scenario (invariant 6, the verdict, and invariant 9,
-where the accepted request is one the dispatcher counted). A control token scoped to its institution is accepted on both
-releases, so the probe cannot pass by refusing everything. **The other four fixes still have no control**: an
-organisation administrator creating a bare or foreign-domain user, the spare check before the guards (a refused spare
-request must cost no guard call), the saturation fallback's spare check, and `n` and `best_of` in the borrower's slots.
-The campaign cannot see them, and a release that regressed on one would not fail it.
+In the run of 2026-11-08 (185 runs per release, seeds 1 to 5, none broke an invariant outside the controls), `llmchaos
+diff` v0.37.1 against v0.38.0 lists 30 differences and v0.38.0 against v0.38.1 lists 5: **exactly the controls of the
+fixes between them**, the five audit controls (10 for the schac one, which also moves invariant 9, where the accepted
+request is one the dispatcher counted) and the recorder control. A control token scoped to its institution is accepted
+on both releases, so the schac probe cannot pass by refusing everything, and each control fails the campaign when it
+passes on the old release.
+
+The admin-users control covers the refusals and the restart; it does not cover the real person's SSO or SCIM role after
+a squat, because the harness has no SCIM block. The guard and fallback controls run without a federation mount (the
+gateway refuses a federation on a gateway that serves several models) and declare invariant 3 not applicable, since
+there is a second upstream.
+
+Each control had to be made to discriminate: a first version of the fallback control passed on v0.37.1 too, because a
+spare-only borrower is never admitted into a saturated main pool on either release, so the move to a fallback is reached
+only by a borrower that holds a share of the main pool; the recorder control first lost the documented last second on
+both releases, and kills 4.5 s into the hang so that the stall dominates it. The scenario was corrected, not the judge.
 
 Before the control, the first campaign had already shown the schac fix indirectly: v0.38.0 refuses a federation token
 whose name is unscoped, which v0.37.1 accepted, and it appeared as 15 differing verdicts until the harness minted a
