@@ -65,6 +65,7 @@ reservation and borrowing, mapped onto vLLM's own priority scheduler.
 | [v0.37.0](https://github.com/go-llmflow/gateway/releases/tag/v0.37.0) | **a peer dispatcher as one node** (`federation` block): a prefix that serves the inference API to one organisation's keys, and a key-less `GET <prefix>/metrics` with vLLM's time-to-first-token histogram of its own requests, +Inf for every refusal, read by aristote-dispatcher's `least_busy` strategy. See [Being a node of a peer dispatcher]({{< relref "shared-purchase.md" >}}#ilaas-federation) |
 | [v0.37.1](https://github.com/go-llmflow/gateway/releases/tag/v0.37.1) | **patch**: the Bedrock stream converter and the usage tracker no longer disagree (issue #157: counts that overflow when summed, then a `usAge` key); the converter now feeds the tracker itself instead of copying its rules. `check-config` now **refuses a `federation` block on a gateway serving more than one model**: run one gateway per model. See [Fix in v0.37.1]({{< relref "security.md" >}}#v0371) and [Being a node of a peer dispatcher]({{< relref "shared-purchase.md" >}}#ilaas-federation) |
 | [v0.38.0](https://github.com/go-llmflow/gateway/releases/tag/v0.38.0) | **security, breaking** (a third-party audit of v0.37.1): with an `accept` on `schac_home_organization` the scope of the person's name must equal a value of the claim that `accept` lists, else the token or login is refused; `POST /admin/users` refuses a bare name once a domain is configured and an organisation admin creates only names of its own institutions' domains; a refused request costs no guard-model call and guard calls run in the caller's priority band; the saturation fallback and fair share are corrected. **A federation proxy's tokens and logins need a scoped name.** See [Fixes in v0.38.0]({{< relref "security.md" >}}#v0380) and [Several identity providers]({{< relref "identity.md" >}}#multi-idp) |
+| [v0.38.1](https://github.com/go-llmflow/gateway/releases/tag/v0.38.1) | **patch**: accounting's spooling no longer waits on the store (issue #165). One goroutine spools (fsync) and another ships to PostgreSQL, so while the store hangs the records of requests answered meanwhile are in the spool, not in memory, and a `SIGKILL` no longer loses them: the documented bound of about 1 s holds. Exactly-once is unchanged. A full or unwritable spool holds records in memory (up to 100,000), alerts `accounting_records_lost` and refuses a budget-governed request with 503 `spool_full`. See [Fix in v0.38.1]({{< relref "security.md" >}}#v0381) |
 
 **Which tag to take.** v0.13.1 was published **after** v0.14.0, and on a commit that
 already contains the HA code of v0.14.0 (it descends from it); v0.14.1 is the very same
@@ -1419,12 +1420,14 @@ Open defects of v0.25.2, as the repository lists them:
 4. **Aborted requests are charged with an estimate** (see above).
 5. **Prefix-cache isolation is per scope, not absolute** (see above).
 6. **Accounting drops records only when its bounds are reached.** A record is
-   dropped when the in-memory queue (`queue_size`) is full, and lost when the
-   durable spool (`spool_max_bytes`) is full or cannot be written and the store
-   refuses it too (counted in `llmflow_accounting_failed_total`, alerted as
-   `accounting_records_lost`). A record still in the queue when the process dies (at
-   most about 1 s of traffic) is lost. Everything that reached the spool survives a
-   store outage and a crash. (The README no longer says that budgets count the cost
+   dropped when the in-memory queue (`queue_size`) is full. When the durable spool
+   (`spool_max_bytes`) is full or cannot be written, the records are held in memory
+   only (v0.38.1), up to 100,000, `accounting_records_lost` is alerted, and a request
+   a budget governs is refused with 503 `spool_full`; records past the 100,000 are
+   lost (counted in `llmflow_accounting_failed_total`). A record still in the queue
+   when the process dies (at most about 1 s of traffic, whatever the store does since
+   v0.38.1; before it, a hung store stretched this to the length of the stall) is lost.
+   Everything that reached the spool survives a store outage and a crash. (The README no longer says that budgets count the cost
    only until the next refresh: since v0.17.0 holds and settlement are in PostgreSQL.)
 7. **No TLS** in the gateway: put it behind a TLS proxy. The **admin API shares
    the client listener**. `/v1/responses` is served

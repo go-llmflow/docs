@@ -108,12 +108,16 @@ inside it, and the clients legitimately paid more than the limit).
 
 ## A gateway finding: records wait in memory while the store hangs {#chaos-recorder}
 
+**Fixed in v0.38.1.** Spooling (fsync) and shipping to the store are now two goroutines, so spooling never waits
+on the store and the one-second bound holds whatever PostgreSQL does; exactly-once is unchanged. What follows
+describes v0.38.0.
+
 One run of `ha-kill-during-pg-restart` (seed 2, gateway v0.38.0) left four answered requests unbilled. It did not recur,
 but a test shows it can happen: the accounting recorder is a single goroutine, and while the store hangs (PostgreSQL
 restarting) it is blocked inside an insert with a 10 s timeout, so records of requests answered meanwhile are in memory,
 not in the spool, and a SIGKILL loses them. The documented bound is about one second of traffic; here it is the length of
-the stall. Reproducer and details: [go-llmflow/gateway#165](https://github.com/go-llmflow/gateway/issues/165). Not fixed
-in this release.
+the stall. Reproducer and details: [go-llmflow/gateway#165](https://github.com/go-llmflow/gateway/issues/165), fixed by
+[#166](https://github.com/go-llmflow/gateway/pull/166).
 
 ## Behaviours the campaign confirmed {#chaos-observed}
 
