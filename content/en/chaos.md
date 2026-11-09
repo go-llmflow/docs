@@ -134,9 +134,12 @@ Round 3 closed the gaps round 2 had listed, in CI:
   campaign keeps judging it and fails the day it passes.
 - **The spool on a tiny and on a slow filesystem.** `spool-disk-full` puts the spool on a 1 MiB tmpfs while PostgreSQL
   hangs under a flooding organisation: both v0.38.1 and v0.39.0 keep invariant 2 (v0.38.1 refuses about 70 % of the
-  requests, v0.39.0 about 14 %). `spool-slow-fsync` puts it on a device-mapper delay device (300 ms per write): v0.38.1
-  **loses about a third of the records** (invariant 2), v0.39.0 loses none and slows its admissions instead (a few percent
-  of the throughput). It is a control since v0.39.0, and `llmchaos run --tag` prints that it failed where it had to.
+  requests, v0.39.0 about 14 %). `spool-slow-fsync` puts it on a device-mapper delay device (300 ms per write) while
+  PostgreSQL hangs: v0.39.0 loses nothing (invariant 2 on every seed) and slows its admissions instead (a few percent of the
+  throughput). v0.38.1 **loses records on some loads** (3253 of 3660 billed on one seed, nothing lost on two others once the
+  judge waits for the slow spool to drain): intermittent, so this is not a control (a control fails on every seed before its
+  fix), and the campaign runs the release that holds. The judge first read too early and reported a loss on v0.39.0 too:
+  a spool on a slow device drains in bursts, and the judge now waits seven seconds without a change.
 - **A read-only PostgreSQL.** `pg-readonly-failover` sets `default_transaction_read_only` on the database and cuts every
   session, so that the gateway reconnects into a read-only database, then lifts it: no hard budget is exceeded and no spend
   is lost or doubled (invariants 1, 2 and 8) on v0.38.0, v0.38.1 and v0.39.0.
