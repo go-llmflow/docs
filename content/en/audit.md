@@ -28,6 +28,7 @@ audit {
   checkpoint_interval = "5m"
   anchor              = "archive"
   anchor_max_lag      = "15m"
+  anchor_sync         = "refuse"   # since v0.42.0: the tail lock, below
   retention           = { admin = "61320h", auth = "8760h", scim = "8760h", system = "8760h" }
   prune_interval      = "24h"
 }
@@ -118,12 +119,35 @@ change. **Run without an anchor, `verify` prints a warning**, for the reason bel
 | an older consistent backup restored (rollback) | **not detected** | detected |
 | everything deleted | **not detected** | detected |
 | a log rewritten and re-signed with a stolen key, up to the anchor | not detected | detected |
-| entries after the newest exported checkpoint deleted | not detected | **still open**: at most `checkpoint_interval` plus the export lag |
-| a new history signed after the anchor by the holder of the signing key | not detected | **still open** |
+| entries after the newest exported checkpoint deleted | not detected | **still open** for the guardrail and tool entries (at most `checkpoint_interval` plus the export lag); closed for administrative entries with `anchor_sync` |
+| a new history signed after the anchor by the holder of the signing key | not detected | **still open**; with `anchor_sync`, an administrative entry added this way is reported by `verify` |
 
 Entries and checkpoints live in the same database, which is why an anchor outside
 it is needed. To narrow what stays open, keep the signing key in OpenBao or Vault,
 verify with a public key kept elsewhere, and anchor on write-once storage.
+
+### The tail lock {#tail-lock}
+
+With `anchor_sync = "alert"` or `"refuse"` (since **v0.42.0**, needs an `anchor`), the
+gateway signs a checkpoint after every entry of kind `admin`, `auth`, `scim` or
+`system` and waits, up to `anchor_sync_timeout` (default 5 s), until the anchor export
+holds it. Those entries are on the anchor within moments, not within
+`checkpoint_interval`: they cannot be removed or rewritten without `verify` noticing,
+and an entry of those kinds that appears after the newest anchor and is older than
+`anchor_max_lag` (a forged one, signed with a stolen key by someone who cannot write
+the anchor store) is reported as a problem by `audit verify --anchor export` and
+`POST /admin/audit/verify`.
+
+If the anchor does not take the checkpoint in time, the alert
+`audit_anchor_sync_failed` is raised; with `"refuse"`, administrative writes then
+answer **503** `audit_anchor_unreachable` until the anchor holds a checkpoint again
+(reads are not refused). The write that found the anchor down was already done and is
+answered: the refusal protects what comes after it.
+
+**Still open.** Guardrail decisions and tool calls are too frequent to anchor one by
+one: they wait for the next checkpoint. And an attacker who holds the signing key
+**and** can write the anchor store defeats the lock: use Object Lock, with a key the
+gateway cannot delete under.
 
 ### Retention {#retention}
 

@@ -1465,7 +1465,10 @@ Open defects of v0.25.2, as the repository lists them:
 14. **The audit log's guarantees end at its newest anchor.** Without an anchor
     export, truncation, rollback and deletion of the database go undetected; with
     one, what happened after the newest exported checkpoint can still be removed,
-    and a stolen signing key can sign new history after it. Keep the key in
+    and a stolen signing key can sign new history after it, except for the
+    administrative kinds under `anchor_sync` (v0.42.0), which are anchored before
+    the gateway goes on (the guardrail and tool entries of the last checkpoint
+    interval stay in the window). Keep the key in
     OpenBao or Vault, verify with a public key kept elsewhere, and keep an anchor
     on write-once storage. See the
     [threat model]({{< relref "audit.md" >}}#threat-model).
