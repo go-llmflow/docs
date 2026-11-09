@@ -91,18 +91,38 @@ and `llmchaos diff` between two releases must list exactly the controls.
 | `control-admin-users` (v0.38.0) | `POST /admin/users` is bound to the institutions: the org admin of one institution creating a bare name, or a name in another institution's domain, is refused 400, the gateway restarts, and a name in its own domain is created (control) | created (201) | refused | refused |
 | `control-spare-guard` (v0.38.0) | a request refused for lack of spare capacity costs no guard-model call, and a guard call never runs at priority 0: with a guarded spare-only borrower and the owners keeping the pool full, the guard model's calls are counted by a fake guard | about 1 000 to 2 000 guard calls per run, all at priority 0, for 90 to 100 admitted requests | 2 per admitted request, none at priority 0 | same |
 | `control-fallback-spare` (v0.38.0) | the saturation fallback takes its slot through the same spare test: a borrower that holds a share of the main pool too small to reserve a slot, a never-full fallback pool whose vLLM queue is saturated | all 28 borrower requests of the run moved into the saturated fallback pool | none moved | same |
-| `control-n-slots` (v0.38.0) | `n` and `best_of` are counted in fair share: requests with n = best_of = 4, max_tokens 64, and the gateway's in-flight token gauge per request in flight | about 113 tokens (one choice) | at least 256 (four) | same |
+| `control-n-slots` (v0.39.0) | `n` and `best_of` weigh on admission: the owners keep 5 of 8 slots busy and a spare-only borrower asks n = best_of = 4: a request of n sequences holds n slots and is refused 429 when fewer are free, and the upstream's concurrency never exceeds the pool (v0.38.0 only counted the fair-share token estimate, which never drove admission; the control first judged that estimate and was rewritten) | admitted | admitted | refused whole |
+| `control-schac-institution` (v0.39.0) | a person has one institution, the scope of their name: a token stating `[univ-d, univ-c]`, the claim spelled two ways, and an issuer with no `accept` must not map a person named in univ-d to univ-c's team; a person of univ-c is accepted on each (control) | mapped | mapped | refused |
+| `control-shared-scim` (v0.39.0) | a SCIM client shared by two organisations owns no domain; one organisation claims it with `org { domains }` and the org admin of the other is refused when creating its people | created | created | refused, 400 |
+| `control-dcgm-glitch` (v0.39.0) | a transient GPU 0 reading is not a reset: GPUs carry a month of lifetime energy, one scrape reads 0, and invariant 4 (energy billed is energy moved) judges | lifetime energy billed in one interval | same | not billed |
+| `control-spool-fair` (v0.39.0) | the accounting spool degrades fairly: PostgreSQL hangs, the spool is 1 MiB and one organisation floods under generous budgets; the innocent organisation must never be refused for the spool, the flooder must be | every budgeted request refused ("spool is full") | same | the flooder alone ("this organisation's usage records are filling the spool") |
 | `control-recorder-stall` (v0.38.1, gateway#165) | the accounting recorder no longer waits on the store: PostgreSQL hangs for 5.5 s (the relay accepts and answers nothing), requests are answered meanwhile, the only replica is SIGKILLed 4.5 s into the hang, before the 10 s insert timeout, and restarted: every answered request must be billed exactly once, but the last second before the kill | about 60 answers of 370 lost | same | none lost |
 
-In the run of 2026-11-08 (185 runs per release, seeds 1 to 5, none broke an invariant outside the controls), `llmchaos
-diff` v0.37.1 against v0.38.0 lists 30 differences and v0.38.0 against v0.38.1 lists 5: **exactly the controls of the
-fixes between them**, the five audit controls (10 for the schac one, which also moves invariant 9, where the accepted
-request is one the dispatcher counted) and the recorder control. A control token scoped to its institution is accepted
-on both releases, so the schac probe cannot pass by refusing everything, and each control fails the campaign when it
-passes on the old release.
+Each control declares the release it is `since` (`ControlSince`), and `llmchaos run --tag vX.Y.Z` prints, per run,
+`control X since T on TAG: expected FAIL|PASS, got ...: ok|WRONG`. A control is expected to FAIL on every release before
+its tag and to PASS from it on; the exit status follows the expectation, so a job that fails on an old release by design is
+not read as red, and a control that passes before its fix (it does not discriminate) fails the job. `llmchaos merge --tag`
+audits the same expectation over a whole campaign.
 
-The admin-users control covers the refusals and the restart; it does not cover the real person's SSO or SCIM role after
-a squat, because the harness has no SCIM block. The guard and fallback controls run without a federation mount (the
+In the run of 2026-11-09 (285 runs per release, seeds 1 to 5, none broke an invariant outside the controls), `llmchaos
+diff` v0.37.1 against v0.38.0 lists 30 differences, v0.38.0 against v0.38.1 lists 5 and v0.38.1 against v0.39.0 lists
+25: **exactly the controls of the fixes between them**. A control token scoped to its institution is accepted on both
+releases, so the schac probe cannot pass by refusing everything. The counts for v0.39.0, per invariant (PASS, FAIL, N/A):
+1: 225, 0, 60; 2: 285, 0, 0; 3: 270, 0, 15; 4: 185, 0, 100; 5: 15, 0, 270; 6: 285, 0, 0; 7: 285, 0, 0; 8: 55, 0, 230;
+9: 165, 0, 120. v0.38.1 differs only by the controls' expected failures: 5 on invariant 4 and 20 on invariant 6.
+
+Round 2 added 16 scenarios, each judge with planted-breakage tests: latency and loss between the gateway and its upstream
+and between the replicas; a borrower flooding with `n = best_of = 4`, an organisation flooding `/admin` reports and a
+federation peer hammering `<prefix>/metrics`; an IdP that changes its schac mid-run; `migrate-users` with two replicas;
+two replicas at a budget's edge; a 30-minute run on PostgreSQL (resident memory, descriptors, spool, the owners' shares
+over six windows); and six combined faults. Not covered, and why: a movable clock (the gateway is a static binary with no
+injectable clock, and no API puts records in a past month), so clock jumps and a month close with content are not
+judged; a full or slow-fsync spool directory (it cannot be made so from outside); a PostgreSQL read-only failover (the
+relay cannot promote a replica). Round 2 also found that a long run on the memory store grows by design (it keeps every
+usage record), and that the harness's request identifiers collided after 1000 requests of one worker.
+
+The admin-users control checks the refusals, the restart and, with a SCIM block in the harness, that the real person
+provisioned by SCIM has her role after the squat attempt. The guard and fallback controls run without a federation mount (the
 gateway refuses a federation on a gateway that serves several models) and declare invariant 3 not applicable, since
 there is a second upstream.
 
