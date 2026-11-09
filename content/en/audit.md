@@ -167,8 +167,12 @@ its team's).
 - `require` lists body fields (a name or a dotted path); `require_tags = true` asks
   for at least one request tag. A refused request gets a **400 naming what is
   missing**, and counts in `llmflow_denied_total{reason="policy"}`.
-- `max_body_bytes` and `max_response_bytes` replace the global limits. The response
-  limit is **not applied to streams**.
+- `max_body_bytes` and `max_response_bytes` replace the global limits. Since
+  **v0.40.0** the response limit applies to streams too: a stream is cut between
+  events when the next write would pass it, a final error event
+  (`code: response_limit`) tells the client it was cut, the audit log records
+  `response.limit`, and the usage that was not reached is estimated and flagged as
+  for any aborted stream.
 
 ## Alerts {#alerts}
 
