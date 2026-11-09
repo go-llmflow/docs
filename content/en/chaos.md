@@ -115,11 +115,34 @@ Round 2 added 16 scenarios, each judge with planted-breakage tests: latency and 
 and between the replicas; a borrower flooding with `n = best_of = 4`, an organisation flooding `/admin` reports and a
 federation peer hammering `<prefix>/metrics`; an IdP that changes its schac mid-run; `migrate-users` with two replicas;
 two replicas at a budget's edge; a 30-minute run on PostgreSQL (resident memory, descriptors, spool, the owners' shares
-over six windows); and six combined faults. Not covered, and why: a movable clock (the gateway is a static binary with no
-injectable clock, and no API puts records in a past month), so clock jumps and a month close with content are not
-judged; a full or slow-fsync spool directory (it cannot be made so from outside); a PostgreSQL read-only failover (the
-relay cannot promote a replica). Round 2 also found that a long run on the memory store grows by design (it keeps every
-usage record), and that the harness's request identifiers collided after 1000 requests of one worker.
+over six windows); and six combined faults. Round 2 also found that a long run on the memory store grows by design (it
+keeps every usage record), and that the harness's request identifiers collided after 1000 requests of one worker.
+
+Round 3 closed the gaps round 2 had listed, in CI:
+
+- **A movable clock.** The gateway takes a clock (`WithClock`) but no binary could move it. A build with `-tags chaosclock`
+  (gateway#173) reads an offset from the file named by `LLMFLOW_TEST_CLOCK_FILE`; a default build refuses to start when
+  the variable is set, so the seam is not in a production binary and a harness cannot believe it moved a clock that did
+  not move. Invariant 5 now judges a **month with content**: the clock starts on the 5th of the next month, the current
+  month (85 to 92 of spend per seed) has just ended for the gateway and is closed under traffic, and the closed
+  **snapshot** (`GET /admin/billing/closed`) is compared byte for byte; the live spend report is not frozen by a close, and
+  the gateway stamps its records with `time.Now()`, not with its clock, so a month with content needs a clock *ahead* of the
+  records. `clock-jump-tariff-band` steps the clock back one hour, forward two and back one around the 23:00 change of
+  band. It **fails invariant 4** (0.00128 of the 0.00205 kWh the node used reach the report, on every seed): a step back
+  hides energy. Reduced to a deterministic gateway test and filed as
+  [gateway#175](https://github.com/go-llmflow/gateway/issues/175); the scenario lists it as a known defect, so the
+  campaign keeps judging it and fails the day it passes.
+- **The spool on a tiny and on a slow filesystem.** `spool-disk-full` puts the spool on a 1 MiB tmpfs while PostgreSQL
+  hangs under a flooding organisation: both v0.38.1 and v0.39.0 keep invariant 2 (v0.38.1 refuses about 70 % of the
+  requests, v0.39.0 about 14 %). `spool-slow-fsync` puts it on a device-mapper delay device (300 ms per write): v0.38.1
+  **loses about a third of the records** (invariant 2), v0.39.0 loses none and slows its admissions instead (a few percent
+  of the throughput). It is a control since v0.39.0, and `llmchaos run --tag` prints that it failed where it had to.
+- **A read-only PostgreSQL.** `pg-readonly-failover` sets `default_transaction_read_only` on the database and cuts every
+  session, so that the gateway reconnects into a read-only database, then lifts it: no hard budget is exceeded and no spend
+  is lost or doubled (invariants 1, 2 and 8) on v0.38.0, v0.38.1 and v0.39.0.
+
+These groups run in their own workflow (`special.yml`), and `llmchaos merge --group clock|fs` audits each on its own
+scenarios.
 
 The admin-users control checks the refusals, the restart and, with a SCIM block in the harness, that the real person
 provisioned by SCIM has her role after the squat attempt. The guard and fallback controls run without a federation mount (the
@@ -181,8 +204,11 @@ they expire or the refetch happens.
 
 ## What it does not exercise {#chaos-limits}
 
-What invariant 5 judges is **immutability only**: the figures of a closed month (the gateway's clock cannot be moved from outside, so the closed month is empty, and a month that holds the campaign's traffic cannot be closed),
-soft-budget alert delivery, the gateway's goroutines (no pprof is exposed), and a PostgreSQL restart by the server
-itself (the relay resets connections). The PostgreSQL and HA scenarios, `migrate-users` and the month close run only in
+What invariant 5 judges is the **immutability of the closed snapshot**, not the correctness of the figures in it (they
+are the other invariants' business), and the live spend report of a closed month is not frozen by design. Not exercised:
+soft-budget alert delivery, the gateway's goroutines (no pprof is exposed), a PostgreSQL restart by the server itself (the
+relay resets connections) and a promotion of a real standby (the failover is a read-only switch plus a cut of the
+sessions). The gateway stamps its records with `time.Now()`, so a clock step moves what the gateway computes from its
+clock (periods, intervals, the close) and not the stamps of its records. The PostgreSQL and HA scenarios, `migrate-users` and the month close run only in
 the repository's CI, against both pinned gateway releases, and fail the job when an invariant breaks, when a
 scenario sent nothing, or when one was skipped.
