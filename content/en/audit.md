@@ -152,10 +152,45 @@ are batched into gzipped objects under `requests/<block>/YYYY/MM/DD/`.
 
 ## Export targets {#exports}
 
-`kind` is `s3` or `file`. `gcs` and `azure` answer "not implemented". The S3 client
-is [go-volumes/s3](https://github.com/go-volumes/s3). Exports go through a bounded
-queue; a batch dropped or given up is counted and alerted (`export_dropped`,
-`export_failed`), never silent.
+`kind` is `s3`, `file` or `syslog` (since **v0.41.0**). `gcs` and `azure` answer
+"not implemented". The S3 client is [go-volumes/s3](https://github.com/go-volumes/s3).
+Exports go through a bounded queue; a batch dropped or given up is counted and
+alerted (`export_dropped`, `export_failed`), never silent.
+
+### Syslog {#syslog}
+
+A `syslog` export sends each request-log record as one [RFC 5424](https://www.rfc-editor.org/rfc/rfc5424)
+message, for a SIEM or a log collector:
+
+```hcl
+export "siem" {
+  kind        = "syslog"
+  address     = "siem.example.org:6514"
+  transport   = "tls"          # tls (RFC 5425, default), tcp or udp
+  tls_ca_file = "vault:secret/llmflow#siem_ca"
+  facility    = 16
+}
+logging "research" {
+  teams       = ["lab-med"]
+  destination = "siem"
+}
+```
+
+- **TLS first.** `tls` needs TLS 1.2 or later and a verified certificate (a client
+  certificate with `tls_cert_file` and `tls_key_file`). `tcp` and `udp` send log lines
+  in clear text: they need `insecure_plain = true` and are refused for any address that
+  is not loopback or private, checked on the address actually dialled.
+- **Framing and escaping.** TCP and TLS frames are octet-counted
+  ([RFC 6587](https://www.rfc-editor.org/rfc/rfc6587) section 3.4.1). Control
+  characters are escaped, so a record can never end a frame or forge another message.
+  A record larger than `max_message_bytes` (default 8192; 2048 for UDP) is replaced by
+  a marker carrying its original size, never cut into invalid JSON.
+- **Content** is logged only where the logging block says `content = true`.
+- **What syslog is not.** There is no acknowledgement ([RFC 6587](https://www.rfc-editor.org/rfc/rfc6587)
+  section 3), so a message written into a connection the peer already dropped can be
+  lost, and a retried batch can arrive twice. A stream cannot be read back or written
+  once: the configuration refuses a syslog export as an audit `anchor`, as a
+  `decision_report` destination and with `lock = true`.
 
 ## Request policies {#policies}
 
