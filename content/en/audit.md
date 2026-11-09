@@ -237,7 +237,9 @@ its team's).
 
 Soft-budget alerts are retried with exponential backoff, up to 6 attempts, and
 every webhook attempt carries the same `Idempotency-Key` so that a receiver can
-de-duplicate. Retries live in memory: a gateway stopped mid-retry does not resume.
+de-duplicate. Since **v0.44.0** the retries live in an outbox table of the PostgreSQL
+store, with or without an `ha` block: a gateway stopped mid-retry resumes after its
+restart (with the memory store they still live in the process).
 
 **Mail needs TLS since v0.20.0.** The SMTP session is refused, and nothing is sent, unless the
 relay offers STARTTLS (`tls = "starttls"`, the default), or speaks TLS from the first byte

@@ -131,7 +131,9 @@ instead of holding an admin token (go-authn/rp: authorization code with PKCE,
   session's token in `X-CSRF-Token` and must not be cross-site (`Sec-Fetch-Site`)
   or come from another `Origin` than the `redirect_url`'s. Bearer-token requests
   are unaffected.
-- Sessions live in the memory of one replica: behind several, use sticky sessions.
+- On PostgreSQL, sessions are sealed in the store and survive a restart (since
+  **v0.44.0**; with the memory store they live in the process). The `ha` block shares
+  them between replicas.
 
 ## Several identity providers, and federations {#multi-idp}
 
