@@ -144,6 +144,12 @@ Round 3 closed the gaps round 2 had listed, in CI:
   session, so that the gateway reconnects into a read-only database, then lifts it: no hard budget is exceeded and no spend
   is lost or doubled (invariants 1, 2 and 8) on v0.38.0, v0.38.1 and v0.39.0.
 
+The first full run of round 3 also showed three failures that did not recur in the next run of the same code: a long-run
+seed on v0.39.0 whose join found no upstream witness for one organisation (invariant 2), a combined saturation, PostgreSQL
+hang and replica kill on v0.38.1 with 9 requests in flight at the upstream for a capacity of 8 (invariant 3, once in 15 runs),
+and a harness port collision. Their evidence had been deleted by the next seed; the harness now keeps the evidence of
+every seed, so the next occurrence can be read. They are not filed as gateway defects, because nothing reproduces them.
+
 These groups run in their own workflow (`special.yml`), and `llmchaos merge --group clock|fs` audits each on its own
 scenarios.
 
