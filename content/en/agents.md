@@ -298,8 +298,9 @@ models:
 
 - A Responses **stream** under **post-call** guardrails is refused: ask with
   `"stream": false`.
-- A guarded stream that carries tool-call arguments in the chat API is stopped; ask
-  without `stream`.
+- Since gateway v0.43.0 a guarded chat stream that carries tool calls is no longer
+  stopped: the arguments are held until the choice ends, masked, and sent in one
+  chunk, so a client that shows arguments as they arrive sees them all at once.
 - A client `chat_template` is stripped, and so are `priority`, `extra_body` and the
   other engine fields.
 - The performance of the current release is not measured yet.

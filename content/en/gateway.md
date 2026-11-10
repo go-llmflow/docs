@@ -363,6 +363,32 @@ are stripped, and `chat_template_kwargs` is kept, so the count matches the
   inspected, and the content log never holds it.
 - A client `chat_template` is stripped from every request.
 
+### Regions {#regions}
+
+Several gateways can share one PostgreSQL. Since **v0.44.0** a gateway can be given a
+**region**, and so can each upstream, so that each gateway serves from the GPUs near it:
+
+```hcl
+region = "eu-west"                 # this gateway's region
+
+model "llama" {
+  region_policy = "prefer"         # "prefer" (default) | "require"
+  upstream "paris-1"   { base_url = "http://gpu-fr:8000" region = "eu-west" }
+  upstream "chicago-1" { base_url = "http://gpu-us:8000" region = "us-central" }
+}
+```
+
+A gateway with a region sends to the upstreams of its region first: an available one,
+then, with `prefer`, an available one elsewhere, then the last resort in the region, then
+elsewhere. With `require` (data residency) nothing outside the region is ever used, not
+even as the last resort: a request with no upstream in the region fails instead of leaving
+it. Requests that left the region are counted in `llmflow_cross_region_total`.
+
+**What this is not.** The gateway does not steer clients to a region (your DNS, anycast or
+load balancer does), does not forward a request to another region's gateway, and does not
+place data: `require` is about where inference runs. A Slurm-discovered upstream has no
+region, so it is outside the region under `require`.
+
 ### Fallbacks {#fallbacks}
 
 A model group can name fallbacks, tried in order (at most 4, not a guard model, not
@@ -1105,6 +1131,8 @@ third-party asset is loaded.
 | Profiles (since v0.18.0) | each person's workload profile, the capacity check and the workday calibration: see [Workload profiles]({{< relref "workload-profiles.md" >}}#ui) |
 | Reports (since v0.13.0) | the finance view of the spend report: period, drill-down, previous period, charts, exports, Slurm reconciliation. See [Finance reports]({{< relref "finance-reports.md" >}}) |
 | Fair share | live state per pool: reservation, in flight, borrowing, level fairshare and rank |
+| Models (v0.45.0) | the model catalogue: class, context length, price per million tokens, upstreams up out of configured, regions, fallbacks, and whether an external provider serves it. As JSON: `GET /admin/models`. Guard models, and the organisations and teams allowed to use an external provider's model, are shown to proxy roles only |
+| Teams (v0.45.0) | the organisations and teams the signed-in role can see, read-only |
 | Audit | entries page by page, and a button that verifies the chain (status of the checkpoints and of the anchor) |
 
 The UI holds no privilege of its own: every page calls the admin API's handlers
@@ -1449,14 +1477,17 @@ Open defects of v0.25.2, as the repository lists them:
 8. **`C` is static configuration**; the gateway does not measure or adapt it.
 9. **Admin principals are read from the store on every admin request**, with no
    cache: role changes apply at once, but the admin API fails with the store.
-10. **Soft-budget alert retries live in memory.** Each channel (webhook, SMTP) is
-    retried on its own, up to 6 attempts with exponential backoff; a 4xx other
-    than 408 and 429 is not retried; every webhook attempt carries the same
-    `Idempotency-Key`. A gateway stopped mid-retry does not resume: the period is
-    already marked as alerted. (With an `ha` block alerts go through an outbox
-    table in PostgreSQL and survive a restart.)
-11. **Without an `ha` block, SSO sessions live in one replica's memory**: behind
-    several replicas, use sticky sessions. With one, they are in PostgreSQL.
+10. **Soft-budget alert retries are persistent on PostgreSQL (v0.44.0).** Each
+    channel (webhook, SMTP) is retried on its own, up to 6 attempts with
+    exponential backoff; a 4xx other than 408 and 429 is not retried; every
+    webhook attempt carries the same `Idempotency-Key`. The retries go through an
+    outbox table in PostgreSQL and survive a restart, with or without an `ha`
+    block. Until v0.43.x a single gateway stopped mid-retry did not resume. With
+    the memory store they still live in the process.
+11. **SSO sessions are persistent on PostgreSQL (v0.44.0).** They are sealed in the
+    store (a key derived from the `ha` secret, or from the master key for one
+    gateway), so a restart no longer logs everyone out; the `ha` block shares them
+    between replicas. With the memory store they live in the process.
 12. **A person holding a JWT cannot be revoked individually**: disable the team,
     change the `map` blocks, or revoke at the identity provider; a token already
     verified stays cached until its `exp` or `key_cache_ttl`.
@@ -1472,11 +1503,14 @@ Open defects of v0.25.2, as the repository lists them:
     OpenBao or Vault, verify with a public key kept elsewhere, and keep an anchor
     on write-once storage. See the
     [threat model]({{< relref "audit.md" >}}#threat-model).
-15. **What guardrails do not inspect.** Streamed tool-call arguments cannot be
-    masked, so a guarded stream that carries them is stopped (ask without
-    `stream`). Reasoning text, refusals, log probabilities and unknown fields are
-    removed from guarded answers, not inspected. A secret whose start appears more
-    than 256 bytes before it can match is not seen in a stream, and a span still
+15. **What guardrails do not inspect.** Since v0.43.0 streamed tool-call arguments
+    are held until the choice ends, masked whole and sent in one chunk, and reasoning
+    text (`reasoning_content`) is masked like the content (with only classifying
+    guardrails, a stream's reasoning text is removed). A URL's userinfo
+    (`://user:secret@`, which has no maximum length) is held from its `://` until the
+    span has ended, so a secret that begins more than 256 bytes before it can match
+    is seen. Refusals, log probabilities and unknown fields are removed from
+    guarded answers, not inspected, and a span still
     open after 64 KiB is released masked only as far as it has reached. Guardrail
     audit entries are written asynchronously and dropped, counted and alerted when
     the queue is full. **A Responses stream under post-call guardrails is
