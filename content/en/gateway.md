@@ -365,7 +365,7 @@ are stripped, and `chat_template_kwargs` is kept, so the count matches the
 
 ### Regions {#regions}
 
-Several gateways can share one PostgreSQL. Since **v0.45.0** a gateway can be given a
+Several gateways can share one PostgreSQL. Since **v0.44.0** a gateway can be given a
 **region**, and so can each upstream, so that each gateway serves from the GPUs near it:
 
 ```hcl
@@ -1131,8 +1131,8 @@ third-party asset is loaded.
 | Profiles (since v0.18.0) | each person's workload profile, the capacity check and the workday calibration: see [Workload profiles]({{< relref "workload-profiles.md" >}}#ui) |
 | Reports (since v0.13.0) | the finance view of the spend report: period, drill-down, previous period, charts, exports, Slurm reconciliation. See [Finance reports]({{< relref "finance-reports.md" >}}) |
 | Fair share | live state per pool: reservation, in flight, borrowing, level fairshare and rank |
-| Models (v0.46.0) | the model catalogue: class, context length, price per million tokens, upstreams up out of configured, regions, fallbacks, and whether an external provider serves it. As JSON: `GET /admin/models`. Guard models, and the organisations and teams allowed to use an external provider's model, are shown to proxy roles only |
-| Teams (v0.46.0) | the organisations and teams the signed-in role can see, read-only |
+| Models (v0.45.0) | the model catalogue: class, context length, price per million tokens, upstreams up out of configured, regions, fallbacks, and whether an external provider serves it. As JSON: `GET /admin/models`. Guard models, and the organisations and teams allowed to use an external provider's model, are shown to proxy roles only |
+| Teams (v0.45.0) | the organisations and teams the signed-in role can see, read-only |
 | Audit | entries page by page, and a button that verifies the chain (status of the checkpoints and of the anchor) |
 
 The UI holds no privilege of its own: every page calls the admin API's handlers
