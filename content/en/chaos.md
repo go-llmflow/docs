@@ -128,10 +128,11 @@ Round 3 closed the gaps round 2 had listed, in CI:
   **snapshot** (`GET /admin/billing/closed`) is compared byte for byte; the live spend report is not frozen by a close, and
   the gateway stamps its records with `time.Now()`, not with its clock, so a month with content needs a clock *ahead* of the
   records. `clock-jump-tariff-band` steps the clock back one hour, forward two and back one around the 23:00 change of
-  band. It **fails invariant 4** (0.00128 of the 0.00205 kWh the node used reach the report, on every seed): a step back
-  hides energy. Reduced to a deterministic gateway test and filed as
-  [gateway#175](https://github.com/go-llmflow/gateway/issues/175); the scenario lists it as a known defect, so the
-  campaign keeps judging it and fails the day it passes.
+  band. It **failed invariant 4** on v0.45.0 (0.00128 of the 0.00205 kWh the node used reached the report, on every seed): a
+  step back hid energy. Reduced to a deterministic gateway test and filed as
+  [gateway#175](https://github.com/go-llmflow/gateway/issues/175), it is **fixed in v0.45.1**: each exporter's intervals
+  follow a timeline that never goes back, so they are stored when they settle. The scenario lists no known defect any more
+  and is judged like the others on v0.45.1.
 - **The spool on a tiny and on a slow filesystem.** `spool-disk-full` puts the spool on a 1 MiB tmpfs while PostgreSQL
   hangs under a flooding organisation: both v0.38.1 and v0.39.0 keep invariant 2 (v0.38.1 refuses about 70 % of the
   requests, v0.39.0 about 14 %). `spool-slow-fsync` puts it on a device-mapper delay device (300 ms per write) while
@@ -148,7 +149,18 @@ The first full run of round 3 also showed three failures that did not recur in t
 seed on v0.39.0 whose join found no upstream witness for one organisation (invariant 2), a combined saturation, PostgreSQL
 hang and replica kill on v0.38.1 with 9 requests in flight at the upstream for a capacity of 8 (invariant 3, once in 15 runs),
 and a harness port collision. Their evidence had been deleted by the next seed; the harness now keeps the evidence of
-every seed, so the next occurrence can be read. They are not filed as gateway defects, because nothing reproduces them.
+every seed, so the next occurrence can be read. The 9-for-8 is filed as
+[gateway#180](https://github.com/go-llmflow/gateway/issues/180): the kept artifact holds seed 5 only, so it is unreadable, not
+a demonstrated admission bug (the gateway's books agree: invariants 2 and 8 pass on that seed). The missing upstream witness
+is filed as [bench#31](https://github.com/go-llmflow/bench/issues/31).
+
+**Gateway v0.45.1 joins the matrix** (bench v0.14.1). The full campaign, 290 runs per release (seeds 1 to 5),
+breaks no invariant on v0.45.1, and `llmchaos diff` of v0.39.0 against v0.45.1 lists **0 differences**: the counts per
+invariant are those of v0.39.0 above (1: 230, 0, 60; 2: 290, 0, 0; 3: 275, 0, 15; 4: 185, 0, 105; 5: 15, 0, 275; 6: 290, 0, 0;
+7: 290, 0, 0; 8: 60, 0, 230; 9: 165, 0, 125). The clock scenarios, which run in `special.yml` on the v0.45.1 release built with
+`-tags chaosclock`, pass. One run of `clock-jump-tariff-band` (seed 5) on the main branch failed invariant 2 because the
+recording upstream held no record of one organisation's answers, while the gateway's bill matched the clients' ledger
+(bench#31, not reproduced in three local runs, green when re-run).
 
 These groups run in their own workflow (`special.yml`), and `llmchaos merge --group clock|fs` audits each on its own
 scenarios.
