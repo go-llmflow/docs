@@ -150,9 +150,22 @@ seed on v0.39.0 whose join found no upstream witness for one organisation (invar
 hang and replica kill on v0.38.1 with 9 requests in flight at the upstream for a capacity of 8 (invariant 3, once in 15 runs),
 and a harness port collision. Their evidence had been deleted by the next seed; the harness now keeps the evidence of
 every seed, so the next occurrence can be read. The 9-for-8 is filed as
-[gateway#180](https://github.com/go-llmflow/gateway/issues/180): the kept artifact holds seed 5 only, so it is unreadable, not
-a demonstrated admission bug (the gateway's books agree: invariants 2 and 8 pass on that seed). The missing upstream witness
-is filed as [bench#31](https://github.com/go-llmflow/bench/issues/31).
+[gateway#180](https://github.com/go-llmflow/gateway/issues/180). The first artifact held seed 5 only, so it was unreadable; a
+hunt (`hunt.yml`, run by hand) then ran the scenario on 200 seeds of v0.38.1 and of v0.45.1 with the evidence of every seed,
+three times: **3 sightings per 200 on both releases each time** (9 in 1200 seed-runs, 9 to 15 requests in flight for a pool of
+8), at 5 to 10 s, as bursts of requests overlapping within 1.5 ms, none abandoned. Reading them took three turns, and the
+last two readings were wrong in opposite directions, so the result is stated with what settled it. An independent review of the
+admission path found that the upstream can legitimately hold more than the pool's capacity, because **owners are never
+refused** (their requests queue by priority at the engine); the guarantee is that a spare-only borrower takes a slot only if the
+pool has room *when it is admitted*. It also found a real defect behind the same shape: an owner request admitted while no owner
+could decide (the lease had lapsed, the forward timed out) was not counted by the owner, so a borrower could be admitted on a
+stale count; fixed in **gateway v0.45.2** (gateway#183). The judge was changed to match the guarantee: invariant 3 is judged at the
+borrower's admission instant, which v0.45.2 can tell the upstream with `fairshare { admitted_header = true }` (a test witness, off by
+default), and no longer bounds the upstream's total (bench v0.14.3). On v0.45.2 with that judge the scenario ran on 600 seeds:
+**0 failures**. A release without the header is reported "NOT judged" on this point. The missing upstream witness (a random
+identifier read as the marker, so one key's answers had no witness) was [bench#31](https://github.com/go-llmflow/bench/issues/31),
+fixed in v0.14.3: the marker must carry the run's tag, and a witness no client request explains makes the judge say "WITNESS
+INCOMPLETE" instead of a verdict on the gateway.
 
 **Gateway v0.45.1 joins the matrix** (bench v0.14.1). The full campaign, 290 runs per release (seeds 1 to 5),
 breaks no invariant on v0.45.1, and `llmchaos diff` of v0.39.0 against v0.45.1 lists **0 differences**: the counts per
@@ -160,7 +173,7 @@ invariant are those of v0.39.0 above (1: 230, 0, 60; 2: 290, 0, 0; 3: 275, 0, 15
 7: 290, 0, 0; 8: 60, 0, 230; 9: 165, 0, 125). The clock scenarios, which run in `special.yml` on the v0.45.1 release built with
 `-tags chaosclock`, pass. One run of `clock-jump-tariff-band` (seed 5) on the main branch failed invariant 2 because the
 recording upstream held no record of one organisation's answers, while the gateway's bill matched the clients' ledger
-(bench#31, not reproduced in three local runs, green when re-run).
+(bench#31, green when re-run, fixed in v0.14.3).
 
 These groups run in their own workflow (`special.yml`), and `llmchaos merge --group clock|fs` audits each on its own
 scenarios.
