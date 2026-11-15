@@ -173,7 +173,7 @@ invariant are those of v0.39.0 above (1: 230, 0, 60; 2: 290, 0, 0; 3: 275, 0, 15
 7: 290, 0, 0; 8: 60, 0, 230; 9: 165, 0, 125). The clock scenarios, which run in `special.yml` on the v0.45.1 release built with
 `-tags chaosclock`, pass. One run of `clock-jump-tariff-band` (seed 5) on the main branch failed invariant 2 because the
 recording upstream held no record of one organisation's answers, while the gateway's bill matched the clients' ledger
-(bench#31, green when re-run, fixed in v0.14.2).
+(bench#31, green when re-run, fixed in v0.14.3).
 
 These groups run in their own workflow (`special.yml`), and `llmchaos merge --group clock|fs` audits each on its own
 scenarios.
