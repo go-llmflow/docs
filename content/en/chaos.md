@@ -154,8 +154,9 @@ every seed, so the next occurrence can be read. The 9-for-8 is filed as
 hunt (bench v0.14.2, `hunt.yml`, run by hand) then ran the scenario on 200 seeds of v0.38.1 and of v0.45.1 with the evidence of
 every seed, three times: **3 sightings per 200 on both releases each time** (9 in 1200 seed-runs, 9 to 15 requests in flight for a
 pool of 8). They come at 5 to 10 s, when the owners start, before the PostgreSQL hang and the kill, as bursts of requests
-overlapping within 1.5 ms, none abandoned, and they survived two fixes of the fake's in-flight count. It is read as a real
-over-admission, still open, and v0.45.1 is not better than v0.38.1. The missing upstream witness (a random identifier read
+overlapping within 1.5 ms, none abandoned, and they survived two fixes of the fake's in-flight count. Whether they are an
+admission over the pool or the harness counting owners that the gateway never refuses is **under review**: the issue stays
+open, and neither reading is asserted here. v0.45.1 shows the same rate as v0.38.1. The missing upstream witness (a random identifier read
 as the marker, so one key's answers had no witness) was [bench#31](https://github.com/go-llmflow/bench/issues/31), fixed in
 v0.14.2: the marker must carry the run's tag, and a witness no client request explains makes the judge say "WITNESS
 INCOMPLETE" instead of a verdict on the gateway.
