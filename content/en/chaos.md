@@ -150,9 +150,15 @@ seed on v0.39.0 whose join found no upstream witness for one organisation (invar
 hang and replica kill on v0.38.1 with 9 requests in flight at the upstream for a capacity of 8 (invariant 3, once in 15 runs),
 and a harness port collision. Their evidence had been deleted by the next seed; the harness now keeps the evidence of
 every seed, so the next occurrence can be read. The 9-for-8 is filed as
-[gateway#180](https://github.com/go-llmflow/gateway/issues/180): the kept artifact holds seed 5 only, so it is unreadable, not
-a demonstrated admission bug (the gateway's books agree: invariants 2 and 8 pass on that seed). The missing upstream witness
-is filed as [bench#31](https://github.com/go-llmflow/bench/issues/31).
+[gateway#180](https://github.com/go-llmflow/gateway/issues/180). The first artifact held seed 5 only, so it was unreadable; a
+hunt (bench v0.14.2, `hunt.yml`, run by hand) then ran the scenario on 200 seeds of v0.38.1 and of v0.45.1 with the evidence of
+every seed, three times: **3 sightings per 200 on both releases each time** (9 in 1200 seed-runs, 9 to 15 requests in flight for a
+pool of 8). They come at 5 to 10 s, when the owners start, before the PostgreSQL hang and the kill, as bursts of requests
+overlapping within 1.5 ms, none abandoned, and they survived two fixes of the fake's in-flight count. It is read as a real
+over-admission, still open, and v0.45.1 is not better than v0.38.1. The missing upstream witness (a random identifier read
+as the marker, so one key's answers had no witness) was [bench#31](https://github.com/go-llmflow/bench/issues/31), fixed in
+v0.14.2: the marker must carry the run's tag, and a witness no client request explains makes the judge say "WITNESS
+INCOMPLETE" instead of a verdict on the gateway.
 
 **Gateway v0.45.1 joins the matrix** (bench v0.14.1). The full campaign, 290 runs per release (seeds 1 to 5),
 breaks no invariant on v0.45.1, and `llmchaos diff` of v0.39.0 against v0.45.1 lists **0 differences**: the counts per
@@ -160,7 +166,7 @@ invariant are those of v0.39.0 above (1: 230, 0, 60; 2: 290, 0, 0; 3: 275, 0, 15
 7: 290, 0, 0; 8: 60, 0, 230; 9: 165, 0, 125). The clock scenarios, which run in `special.yml` on the v0.45.1 release built with
 `-tags chaosclock`, pass. One run of `clock-jump-tariff-band` (seed 5) on the main branch failed invariant 2 because the
 recording upstream held no record of one organisation's answers, while the gateway's bill matched the clients' ledger
-(bench#31, not reproduced in three local runs, green when re-run).
+(bench#31, green when re-run, fixed in v0.14.2).
 
 These groups run in their own workflow (`special.yml`), and `llmchaos merge --group clock|fs` audits each on its own
 scenarios.
