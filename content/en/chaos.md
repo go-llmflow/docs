@@ -151,14 +151,20 @@ hang and replica kill on v0.38.1 with 9 requests in flight at the upstream for a
 and a harness port collision. Their evidence had been deleted by the next seed; the harness now keeps the evidence of
 every seed, so the next occurrence can be read. The 9-for-8 is filed as
 [gateway#180](https://github.com/go-llmflow/gateway/issues/180). The first artifact held seed 5 only, so it was unreadable; a
-hunt (bench v0.14.2, `hunt.yml`, run by hand) then ran the scenario on 200 seeds of v0.38.1 and of v0.45.1 with the evidence of
-every seed, three times: **3 sightings per 200 on both releases each time** (9 in 1200 seed-runs, 9 to 15 requests in flight for a
-pool of 8). They come at 5 to 10 s, when the owners start, before the PostgreSQL hang and the kill, as bursts of requests
-overlapping within 1.5 ms, none abandoned, and they survived two fixes of the fake's in-flight count. Whether they are an
-admission over the pool or the harness counting owners that the gateway never refuses is **under review**: the issue stays
-open, and neither reading is asserted here. v0.45.1 shows the same rate as v0.38.1. The missing upstream witness (a random identifier read
-as the marker, so one key's answers had no witness) was [bench#31](https://github.com/go-llmflow/bench/issues/31), fixed in
-v0.14.2: the marker must carry the run's tag, and a witness no client request explains makes the judge say "WITNESS
+hunt (`hunt.yml`, run by hand) then ran the scenario on 200 seeds of v0.38.1 and of v0.45.1 with the evidence of every seed,
+three times: **3 sightings per 200 on both releases each time** (9 in 1200 seed-runs, 9 to 15 requests in flight for a pool of
+8), at 5 to 10 s, as bursts of requests overlapping within 1.5 ms, none abandoned. Reading them took three turns, and the
+last two readings were wrong in opposite directions, so the result is stated with what settled it. An independent review of the
+admission path found that the upstream can legitimately hold more than the pool's capacity, because **owners are never
+refused** (their requests queue by priority at the engine); the guarantee is that a spare-only borrower takes a slot only if the
+pool has room *when it is admitted*. It also found a real defect behind the same shape: an owner request admitted while no owner
+could decide (the lease had lapsed, the forward timed out) was not counted by the owner, so a borrower could be admitted on a
+stale count; fixed in **gateway v0.45.2** (gateway#183). The judge was changed to match the guarantee: invariant 3 is judged at the
+borrower's admission instant, which v0.45.2 can tell the upstream with `fairshare { admitted_header = true }` (a test witness, off by
+default), and no longer bounds the upstream's total (bench v0.14.3). On v0.45.2 with that judge the scenario ran on 600 seeds:
+**0 failures**. A release without the header is reported "NOT judged" on this point. The missing upstream witness (a random
+identifier read as the marker, so one key's answers had no witness) was [bench#31](https://github.com/go-llmflow/bench/issues/31),
+fixed in v0.14.3: the marker must carry the run's tag, and a witness no client request explains makes the judge say "WITNESS
 INCOMPLETE" instead of a verdict on the gateway.
 
 **Gateway v0.45.1 joins the matrix** (bench v0.14.1). The full campaign, 290 runs per release (seeds 1 to 5),
